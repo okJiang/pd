@@ -99,7 +99,10 @@ func (suite *schedulerTestSuite) TearDownTest() {
 }
 
 func (suite *schedulerTestSuite) TestScheduler() {
-	suite.env.RunTestInTwoModes(suite.checkScheduler)
+	// use a new environment to avoid affecting other tests
+	env := pdTests.NewSchedulingTestEnvironment(suite.T())
+	env.RunTestInTwoModes(suite.checkScheduler)
+	env.Cleanup()
 }
 
 func (suite *schedulerTestSuite) checkScheduler(cluster *pdTests.TestCluster) {
@@ -661,7 +664,10 @@ func (suite *schedulerTestSuite) checkScheduler(cluster *pdTests.TestCluster) {
 }
 
 func (suite *schedulerTestSuite) TestSchedulerDiagnostic() {
-	suite.env.RunTestInTwoModes(suite.checkSchedulerDiagnostic)
+	// use a new environment to avoid affecting other tests
+	env := pdTests.NewSchedulingTestEnvironment(suite.T())
+	env.RunTestInTwoModes(suite.checkSchedulerDiagnostic)
+	env.Cleanup()
 }
 
 func (suite *schedulerTestSuite) checkSchedulerDiagnostic(cluster *pdTests.TestCluster) {
