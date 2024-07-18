@@ -33,6 +33,7 @@ import (
 	"github.com/tikv/pd/pkg/core/constant"
 	"github.com/tikv/pd/pkg/core/storelimit"
 	sc "github.com/tikv/pd/pkg/schedule/config"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/slice"
 	"github.com/tikv/pd/pkg/storage/endpoint"
 	"github.com/tikv/pd/pkg/utils/etcdutil"
@@ -669,7 +670,7 @@ func (o *PersistOptions) GetSchedulers() sc.SchedulerConfigs {
 }
 
 // IsSchedulerDisabled returns if the scheduler is disabled.
-func (o *PersistOptions) IsSchedulerDisabled(t string) bool {
+func (o *PersistOptions) IsSchedulerDisabled(t types.CheckerSchedulerType) bool {
 	schedulers := o.GetScheduleConfig().Schedulers
 	for _, s := range schedulers {
 		if t == s.Type {
@@ -690,7 +691,7 @@ func (o *PersistOptions) GetHotRegionsReservedDays() uint64 {
 }
 
 // AddSchedulerCfg adds the scheduler configurations.
-func (o *PersistOptions) AddSchedulerCfg(tp string, args []string) {
+func (o *PersistOptions) AddSchedulerCfg(tp types.CheckerSchedulerType, args []string) {
 	v := o.GetScheduleConfig().Clone()
 	for i, schedulerCfg := range v.Schedulers {
 		// comparing args is to cover the case that there are schedulers in same type but not with same name
@@ -712,7 +713,7 @@ func (o *PersistOptions) AddSchedulerCfg(tp string, args []string) {
 }
 
 // RemoveSchedulerCfg removes the scheduler configurations.
-func (o *PersistOptions) RemoveSchedulerCfg(tp string) {
+func (o *PersistOptions) RemoveSchedulerCfg(tp types.CheckerSchedulerType) {
 	v := o.GetScheduleConfig().Clone()
 	for i, schedulerCfg := range v.Schedulers {
 		if tp == schedulerCfg.Type {

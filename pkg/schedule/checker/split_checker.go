@@ -23,6 +23,7 @@ import (
 	"github.com/tikv/pd/pkg/schedule/labeler"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/placement"
+	types "github.com/tikv/pd/pkg/schedule/type"
 )
 
 // SplitChecker splits regions when the key range spans across rule/label boundary.
@@ -43,7 +44,7 @@ func NewSplitChecker(cluster sche.CheckerCluster, ruleManager *placement.RuleMan
 }
 
 // GetType returns the checker type.
-func (*SplitChecker) GetType() string {
+func (*SplitChecker) GetType() types.CheckerSchedulerType {
 	return "split-checker"
 }
 

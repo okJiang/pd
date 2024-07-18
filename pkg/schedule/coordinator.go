@@ -351,7 +351,7 @@ func (c *Coordinator) driveSlowNodeScheduler() {
 				// If the cluster was set up with `raft-kv2` engine, this cluster should
 				// enable `evict-slow-trend` scheduler as default.
 				if c.GetCluster().GetStoreConfig().IsRaftKV2() {
-					typ := schedulers.EvictSlowTrendType
+					typ := types.EvictSlowTrendScheduler
 					args := []string{}
 
 					s, err := schedulers.CreateScheduler(typ, c.opController, c.cluster.GetStorage(), schedulers.ConfigSliceDecoder(typ, args), c.schedulers.RemoveScheduler)

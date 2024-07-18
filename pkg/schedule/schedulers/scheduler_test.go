@@ -28,6 +28,7 @@ import (
 	"github.com/tikv/pd/pkg/schedule/hbstream"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/placement"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/statistics/utils"
 	"github.com/tikv/pd/pkg/storage"
 	"github.com/tikv/pd/pkg/utils/operatorutil"
@@ -119,7 +120,7 @@ func TestRejectLeader(t *testing.T) {
 	re.Empty(ops)
 
 	// Can't evict leader from store2, neither.
-	el, err := CreateScheduler(EvictLeaderType, oc, storage.NewStorageWithMemoryBackend(), ConfigSliceDecoder(EvictLeaderType, []string{"2"}), func(string) error { return nil })
+	el, err := CreateScheduler(types.EvictLeaderScheduler, oc, storage.NewStorageWithMemoryBackend(), ConfigSliceDecoder(types.EvictLeaderScheduler, []string{"2"}), func(string) error { return nil })
 	re.NoError(err)
 	ops, _ = el.Schedule(tc, false)
 	re.Empty(ops)
@@ -145,7 +146,7 @@ func TestRemoveRejectLeader(t *testing.T) {
 	defer cancel()
 	tc.AddRegionStore(1, 0)
 	tc.AddRegionStore(2, 1)
-	el, err := CreateScheduler(EvictLeaderType, oc, storage.NewStorageWithMemoryBackend(), ConfigSliceDecoder(EvictLeaderType, []string{"1"}), func(string) error { return nil })
+	el, err := CreateScheduler(types.EvictLeaderScheduler, oc, storage.NewStorageWithMemoryBackend(), ConfigSliceDecoder(types.EvictLeaderScheduler, []string{"1"}), func(string) error { return nil })
 	re.NoError(err)
 	tc.DeleteStore(tc.GetStore(1))
 	succ, _ := el.(*evictLeaderScheduler).conf.removeStore(1)

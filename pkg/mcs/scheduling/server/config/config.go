@@ -36,6 +36,7 @@ import (
 	"github.com/tikv/pd/pkg/core/storelimit"
 	"github.com/tikv/pd/pkg/mcs/utils"
 	sc "github.com/tikv/pd/pkg/schedule/config"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/slice"
 	"github.com/tikv/pd/pkg/storage/endpoint"
 	"github.com/tikv/pd/pkg/utils/configutil"
@@ -739,7 +740,7 @@ func (o *PersistConfig) IsRaftKV2() bool {
 
 // AddSchedulerCfg adds the scheduler configurations.
 // This method is a no-op since we only use configurations derived from one-way synchronization from API server now.
-func (*PersistConfig) AddSchedulerCfg(string, []string) {}
+func (*PersistConfig) AddSchedulerCfg(types.CheckerSchedulerType, []string) {}
 
 // RemoveSchedulerCfg removes the scheduler configurations.
 // This method is a no-op since we only use configurations derived from one-way synchronization from API server now.

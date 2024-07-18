@@ -32,6 +32,7 @@ import (
 	"github.com/tikv/pd/pkg/schedule/filter"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/plan"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/storage/endpoint"
 	"github.com/tikv/pd/pkg/utils/reflectutil"
 	"github.com/tikv/pd/pkg/utils/syncutil"
@@ -218,7 +219,7 @@ func (b *balanceWitnessScheduler) GetName() string {
 	return b.name
 }
 
-func (*balanceWitnessScheduler) GetType() string {
+func (*balanceWitnessScheduler) GetType() types.CheckerSchedulerType {
 	return BalanceWitnessType
 }
 
@@ -250,7 +251,7 @@ func (b *balanceWitnessScheduler) ReloadConfig() error {
 func (b *balanceWitnessScheduler) IsScheduleAllowed(cluster sche.SchedulerCluster) bool {
 	allowed := b.OpController.OperatorCount(operator.OpWitness) < cluster.GetSchedulerConfig().GetWitnessScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(b.GetType(), operator.OpWitness.String()).Inc()
+		operator.IncOperatorLimitCounter(b.GetType(), operator.OpWitness)
 	}
 	return allowed
 }

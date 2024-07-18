@@ -20,6 +20,7 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/kvproto/pkg/metapb"
 	"github.com/tikv/pd/pkg/core/storelimit"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/utils/configutil"
 	"github.com/tikv/pd/pkg/utils/syncutil"
 	"github.com/tikv/pd/pkg/utils/typeutil"
@@ -558,24 +559,24 @@ type SchedulerConfigs []SchedulerConfig
 
 // SchedulerConfig is customized scheduler configuration
 type SchedulerConfig struct {
-	Type        string   `toml:"type" json:"type"`
-	Args        []string `toml:"args" json:"args"`
-	Disable     bool     `toml:"disable" json:"disable"`
-	ArgsPayload string   `toml:"args-payload" json:"args-payload"`
+	Type        types.CheckerSchedulerType `toml:"type" json:"type"`
+	Args        []string                   `toml:"args" json:"args"`
+	Disable     bool                       `toml:"disable" json:"disable"`
+	ArgsPayload string                     `toml:"args-payload" json:"args-payload"`
 }
 
 // DefaultSchedulers are the schedulers be created by default.
 // If these schedulers are not in the persistent configuration, they
 // will be created automatically when reloading.
 var DefaultSchedulers = SchedulerConfigs{
-	{Type: "balance-region"},
-	{Type: "balance-leader"},
-	{Type: "hot-region"},
-	{Type: "evict-slow-store"},
+	{Type: types.BalanceLeaderScheduler},
+	{Type: types.BalanceRegionScheduler},
+	{Type: types.HotRegionScheduler},
+	{Type: types.EvictSlowStoreScheduler},
 }
 
 // IsDefaultScheduler checks whether the scheduler is enabled by default.
-func IsDefaultScheduler(typ string) bool {
+func IsDefaultScheduler(typ types.CheckerSchedulerType) bool {
 	for _, c := range DefaultSchedulers {
 		if typ == c.Type {
 			return true

@@ -23,6 +23,7 @@ import (
 	"github.com/tikv/pd/pkg/schedule/filter"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/plan"
+	types "github.com/tikv/pd/pkg/schedule/type"
 )
 
 const (
@@ -63,7 +64,7 @@ func (s *shuffleLeaderScheduler) GetName() string {
 	return s.conf.Name
 }
 
-func (*shuffleLeaderScheduler) GetType() string {
+func (*shuffleLeaderScheduler) GetType() types.CheckerSchedulerType {
 	return ShuffleLeaderType
 }
 
@@ -74,7 +75,7 @@ func (s *shuffleLeaderScheduler) EncodeConfig() ([]byte, error) {
 func (s *shuffleLeaderScheduler) IsScheduleAllowed(cluster sche.SchedulerCluster) bool {
 	allowed := s.OpController.OperatorCount(operator.OpLeader) < cluster.GetSchedulerConfig().GetLeaderScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(s.GetType(), operator.OpLeader.String()).Inc()
+		operator.IncOperatorLimitCounter(s.GetType(), operator.OpLeader)
 	}
 	return allowed
 }

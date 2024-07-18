@@ -29,6 +29,7 @@ import (
 	"github.com/tikv/pd/pkg/schedule/filter"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/plan"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/storage/endpoint"
 	"github.com/tikv/pd/pkg/utils/apiutil"
 	"github.com/tikv/pd/pkg/utils/syncutil"
@@ -39,8 +40,8 @@ import (
 const (
 	// EvictLeaderName is evict leader scheduler name.
 	EvictLeaderName = "evict-leader-scheduler"
-	// EvictLeaderType is evict leader scheduler type.
-	EvictLeaderType = "evict-leader"
+	// types.EvictLeaderScheduler is evict leader scheduler type.
+	types.EvictLeaderScheduler = "evict-leader"
 	// EvictLeaderBatchSize is the number of operators to transfer
 	// leaders by one scheduling
 	EvictLeaderBatchSize = 3
@@ -188,8 +189,8 @@ func (*evictLeaderScheduler) GetName() string {
 	return EvictLeaderName
 }
 
-func (*evictLeaderScheduler) GetType() string {
-	return EvictLeaderType
+func (*evictLeaderScheduler) GetType() types.CheckerSchedulerType {
+	return types.EvictLeaderScheduler
 }
 
 func (s *evictLeaderScheduler) EncodeConfig() ([]byte, error) {
@@ -240,7 +241,7 @@ func (s *evictLeaderScheduler) CleanConfig(cluster sche.SchedulerCluster) {
 func (s *evictLeaderScheduler) IsScheduleAllowed(cluster sche.SchedulerCluster) bool {
 	allowed := s.OpController.OperatorCount(operator.OpLeader) < cluster.GetSchedulerConfig().GetLeaderScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(s.GetType(), operator.OpLeader.String()).Inc()
+		operator.IncOperatorLimitCounter(s.GetType(), operator.OpLeader)
 	}
 	return allowed
 }

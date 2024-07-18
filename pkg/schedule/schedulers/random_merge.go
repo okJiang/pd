@@ -26,6 +26,7 @@ import (
 	"github.com/tikv/pd/pkg/schedule/filter"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/plan"
+	types "github.com/tikv/pd/pkg/schedule/type"
 )
 
 const (
@@ -60,7 +61,7 @@ func (s *randomMergeScheduler) GetName() string {
 	return s.conf.Name
 }
 
-func (*randomMergeScheduler) GetType() string {
+func (*randomMergeScheduler) GetType() types.CheckerSchedulerType {
 	return RandomMergeType
 }
 
@@ -71,7 +72,7 @@ func (s *randomMergeScheduler) EncodeConfig() ([]byte, error) {
 func (s *randomMergeScheduler) IsScheduleAllowed(cluster sche.SchedulerCluster) bool {
 	allowed := s.OpController.OperatorCount(operator.OpMerge) < cluster.GetSchedulerConfig().GetMergeScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(s.GetType(), operator.OpMerge.String()).Inc()
+		operator.IncOperatorLimitCounter(s.GetType(), operator.OpMerge)
 	}
 	return allowed
 }

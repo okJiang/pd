@@ -39,13 +39,13 @@ import (
 const (
 	// EvictLeaderName is evict leader scheduler name.
 	EvictLeaderName = "user-evict-leader-scheduler"
-	// EvictLeaderType is evict leader scheduler type.
-	EvictLeaderType        = "user-evict-leader"
+	// types.EvictLeaderScheduler is evict leader scheduler type.
+	types.EvictLeaderScheduler        = "user-evict-leader"
 	noStoreInSchedulerInfo = "No store in user-evict-leader-scheduler-config"
 )
 
 func init() {
-	schedulers.RegisterSliceDecoderBuilder(EvictLeaderType, func(args []string) schedulers.ConfigDecoder {
+	schedulers.RegisterSliceDecoderBuilder(types.EvictLeaderScheduler, func(args []string) schedulers.ConfigDecoder {
 		return func(v any) error {
 			if len(args) != 1 {
 				return errors.New("should specify the store-id")
@@ -68,7 +68,7 @@ func init() {
 		}
 	})
 
-	schedulers.RegisterScheduler(EvictLeaderType, func(opController *operator.Controller, storage endpoint.ConfigStorage, decoder schedulers.ConfigDecoder, _ ...func(string) error) (schedulers.Scheduler, error) {
+	schedulers.RegisterScheduler(types.EvictLeaderScheduler, func(opController *operator.Controller, storage endpoint.ConfigStorage, decoder schedulers.ConfigDecoder, _ ...func(string) error) (schedulers.Scheduler, error) {
 		conf := &evictLeaderSchedulerConfig{StoreIDWitRanges: make(map[uint64][]core.KeyRange), storage: storage}
 		if err := decoder(conf); err != nil {
 			return nil, err
@@ -80,7 +80,7 @@ func init() {
 
 // SchedulerType returns the type of the scheduler
 func SchedulerType() string {
-	return EvictLeaderType
+	return types.EvictLeaderScheduler
 }
 
 // SchedulerArgs returns the args for the scheduler
@@ -174,8 +174,8 @@ func (*evictLeaderScheduler) GetName() string {
 	return EvictLeaderName
 }
 
-func (*evictLeaderScheduler) GetType() string {
-	return EvictLeaderType
+func (*evictLeaderScheduler) GetType() types.CheckerSchedulerType {
+	return types.EvictLeaderScheduler
 }
 
 func (s *evictLeaderScheduler) EncodeConfig() ([]byte, error) {
@@ -207,7 +207,7 @@ func (s *evictLeaderScheduler) CleanConfig(cluster sche.SchedulerCluster) {
 func (s *evictLeaderScheduler) IsScheduleAllowed(cluster sche.SchedulerCluster) bool {
 	allowed := s.OpController.OperatorCount(operator.OpLeader) < cluster.GetSchedulerConfig().GetLeaderScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(s.GetType(), operator.OpLeader.String()).Inc()
+		operator.IncOperatorLimitCounter(s.GetType(), operator.OpLeader)
 	}
 	return allowed
 }
@@ -229,7 +229,7 @@ func (s *evictLeaderScheduler) Schedule(cluster sche.SchedulerCluster, _ bool) (
 		if target == nil {
 			continue
 		}
-		op, err := operator.CreateTransferLeaderOperator(EvictLeaderType, cluster, region, target.GetID(), []uint64{}, operator.OpLeader)
+		op, err := operator.CreateTransferLeaderOperator(types.EvictLeaderScheduler, cluster, region, target.GetID(), []uint64{}, operator.OpLeader)
 		if err != nil {
 			log.Debug("fail to create evict leader operator", errs.ZapError(err))
 			continue

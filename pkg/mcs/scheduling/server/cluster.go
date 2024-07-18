@@ -317,7 +317,7 @@ func (c *Cluster) updateScheduler() {
 			)
 			if err != nil {
 				log.Error("failed to create scheduler",
-					zap.String("scheduler-type", scheduler.Type),
+					zap.Stringer("scheduler-type", scheduler.Type),
 					zap.Strings("scheduler-args", scheduler.Args),
 					errs.ZapError(err))
 				continue

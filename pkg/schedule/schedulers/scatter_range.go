@@ -25,6 +25,7 @@ import (
 	sche "github.com/tikv/pd/pkg/schedule/core"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/plan"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/storage/endpoint"
 	"github.com/tikv/pd/pkg/utils/apiutil"
 	"github.com/tikv/pd/pkg/utils/syncutil"
@@ -148,7 +149,7 @@ func (l *scatterRangeScheduler) GetName() string {
 	return l.name
 }
 
-func (*scatterRangeScheduler) GetType() string {
+func (*scatterRangeScheduler) GetType() types.CheckerSchedulerType {
 	return ScatterRangeType
 }
 
@@ -185,7 +186,7 @@ func (l *scatterRangeScheduler) IsScheduleAllowed(cluster sche.SchedulerCluster)
 func (l *scatterRangeScheduler) allowBalanceLeader(cluster sche.SchedulerCluster) bool {
 	allowed := l.OpController.OperatorCount(operator.OpRange) < cluster.GetSchedulerConfig().GetLeaderScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(l.GetType(), operator.OpLeader.String()).Inc()
+		operator.IncOperatorLimitCounter(l.GetType(), operator.OpLeader)
 	}
 	return allowed
 }
@@ -193,7 +194,7 @@ func (l *scatterRangeScheduler) allowBalanceLeader(cluster sche.SchedulerCluster
 func (l *scatterRangeScheduler) allowBalanceRegion(cluster sche.SchedulerCluster) bool {
 	allowed := l.OpController.OperatorCount(operator.OpRange) < cluster.GetSchedulerConfig().GetRegionScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(l.GetType(), operator.OpRegion.String()).Inc()
+		operator.IncOperatorLimitCounter(l.GetType(), operator.OpRegion)
 	}
 	return allowed
 }

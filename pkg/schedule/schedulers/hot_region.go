@@ -34,6 +34,7 @@ import (
 	"github.com/tikv/pd/pkg/schedule/filter"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/plan"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/slice"
 	"github.com/tikv/pd/pkg/statistics"
 	"github.com/tikv/pd/pkg/statistics/buckets"
@@ -220,7 +221,7 @@ func (h *hotScheduler) GetName() string {
 	return h.name
 }
 
-func (*hotScheduler) GetType() string {
+func (*hotScheduler) GetType() types.CheckerSchedulerType {
 	return HotRegionType
 }
 
@@ -283,7 +284,7 @@ func (h *hotScheduler) GetNextInterval(time.Duration) time.Duration {
 func (h *hotScheduler) IsScheduleAllowed(cluster sche.SchedulerCluster) bool {
 	allowed := h.OpController.OperatorCount(operator.OpHotRegion) < cluster.GetSchedulerConfig().GetHotRegionScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(h.GetType(), operator.OpHotRegion.String()).Inc()
+		operator.IncOperatorLimitCounter(h.GetType(), operator.OpHotRegion)
 	}
 	return allowed
 }

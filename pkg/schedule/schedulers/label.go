@@ -24,6 +24,7 @@ import (
 	"github.com/tikv/pd/pkg/schedule/filter"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/plan"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"go.uber.org/zap"
 )
 
@@ -59,7 +60,7 @@ func (s *labelScheduler) GetName() string {
 	return s.conf.Name
 }
 
-func (*labelScheduler) GetType() string {
+func (*labelScheduler) GetType() types.CheckerSchedulerType {
 	return LabelType
 }
 
@@ -70,7 +71,7 @@ func (s *labelScheduler) EncodeConfig() ([]byte, error) {
 func (s *labelScheduler) IsScheduleAllowed(cluster sche.SchedulerCluster) bool {
 	allowed := s.OpController.OperatorCount(operator.OpLeader) < cluster.GetSchedulerConfig().GetLeaderScheduleLimit()
 	if !allowed {
-		operator.OperatorLimitCounter.WithLabelValues(s.GetType(), operator.OpLeader.String()).Inc()
+		operator.IncOperatorLimitCounter(s.GetType(), operator.OpLeader)
 	}
 	return allowed
 }

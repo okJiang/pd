@@ -26,6 +26,7 @@ import (
 	sche "github.com/tikv/pd/pkg/schedule/core"
 	"github.com/tikv/pd/pkg/schedule/operator"
 	"github.com/tikv/pd/pkg/schedule/plan"
+	types "github.com/tikv/pd/pkg/schedule/type"
 	"github.com/tikv/pd/pkg/storage/endpoint"
 	"github.com/tikv/pd/pkg/utils/apiutil"
 	"github.com/tikv/pd/pkg/utils/syncutil"
@@ -193,7 +194,7 @@ func (*evictSlowStoreScheduler) GetName() string {
 	return EvictSlowStoreName
 }
 
-func (*evictSlowStoreScheduler) GetType() string {
+func (*evictSlowStoreScheduler) GetType() types.CheckerSchedulerType {
 	return EvictSlowStoreType
 }
 
@@ -270,7 +271,7 @@ func (s *evictSlowStoreScheduler) IsScheduleAllowed(cluster sche.SchedulerCluste
 	if s.conf.evictStore() != 0 {
 		allowed := s.OpController.OperatorCount(operator.OpLeader) < cluster.GetSchedulerConfig().GetLeaderScheduleLimit()
 		if !allowed {
-			operator.OperatorLimitCounter.WithLabelValues(s.GetType(), operator.OpLeader.String()).Inc()
+			operator.IncOperatorLimitCounter(s.GetType(), operator.OpLeader)
 		}
 		return allowed
 	}
