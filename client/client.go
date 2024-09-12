@@ -36,7 +36,6 @@ import (
 	"github.com/tikv/pd/client/tlsutil"
 	"github.com/tikv/pd/client/tsoutil"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -80,25 +79,25 @@ type RPCClient interface {
 	// taking care of region change.
 	// Also, it may return nil if PD finds no Region for the key temporarily,
 	// client should retry later.
-	GetRegion(ctx context.Context, key []byte, opts ...GetRegionOption) (*Region, error)
+	GetRegion(ctx context.Context, key []byte, opts ...ClientOption) (*Region, error)
 	// GetRegionFromMember gets a region from certain members.
-	GetRegionFromMember(ctx context.Context, key []byte, memberURLs []string, opts ...GetRegionOption) (*Region, error)
+	GetRegionFromMember(ctx context.Context, key []byte, memberURLs []string, opts ...ClientOption) (*Region, error)
 	// GetPrevRegion gets the previous region and its leader Peer of the region where the key is located.
-	GetPrevRegion(ctx context.Context, key []byte, opts ...GetRegionOption) (*Region, error)
+	GetPrevRegion(ctx context.Context, key []byte, opts ...ClientOption) (*Region, error)
 	// GetRegionByID gets a region and its leader Peer from PD by id.
-	GetRegionByID(ctx context.Context, regionID uint64, opts ...GetRegionOption) (*Region, error)
+	GetRegionByID(ctx context.Context, regionID uint64, opts ...ClientOption) (*Region, error)
 	// Deprecated: use BatchScanRegions instead.
 	// ScanRegions gets a list of regions, starts from the region that contains key.
 	// Limit limits the maximum number of regions returned. It returns all the regions in the given range if limit <= 0.
 	// If a region has no leader, corresponding leader will be placed by a peer
 	// with empty value (PeerID is 0).
-	ScanRegions(ctx context.Context, key, endKey []byte, limit int, opts ...GetRegionOption) ([]*Region, error)
+	ScanRegions(ctx context.Context, key, endKey []byte, limit int, opts ...ClientOption) ([]*Region, error)
 	// BatchScanRegions gets a list of regions, starts from the region that contains key.
 	// Limit limits the maximum number of regions returned. It returns all the regions in the given ranges if limit <= 0.
 	// If a region has no leader, corresponding leader will be placed by a peer
 	// with empty value (PeerID is 0).
 	// The returned regions are flattened, even there are key ranges located in the same region, only one region will be returned.
-	BatchScanRegions(ctx context.Context, keyRanges []KeyRange, limit int, opts ...GetRegionOption) ([]*Region, error)
+	BatchScanRegions(ctx context.Context, keyRanges []KeyRange, limit int, opts ...ClientOption) ([]*Region, error)
 	// GetStore gets a store from PD by store id.
 	// The store may expire later. Caller is responsible for caching and taking care
 	// of store change.
@@ -174,69 +173,6 @@ type Client interface {
 	Close()
 }
 
-// GetStoreOp represents available options when getting stores.
-type GetStoreOp struct {
-	excludeTombstone bool
-}
-
-// GetStoreOption configures GetStoreOp.
-type GetStoreOption func(*GetStoreOp)
-
-// WithExcludeTombstone excludes tombstone stores from the result.
-func WithExcludeTombstone() GetStoreOption {
-	return func(op *GetStoreOp) { op.excludeTombstone = true }
-}
-
-// RegionsOp represents available options when operate regions
-type RegionsOp struct {
-	group          string
-	retryLimit     uint64
-	skipStoreLimit bool
-}
-
-// RegionsOption configures RegionsOp
-type RegionsOption func(op *RegionsOp)
-
-// WithGroup specify the group during Scatter/Split Regions
-func WithGroup(group string) RegionsOption {
-	return func(op *RegionsOp) { op.group = group }
-}
-
-// WithRetry specify the retry limit during Scatter/Split Regions
-func WithRetry(retry uint64) RegionsOption {
-	return func(op *RegionsOp) { op.retryLimit = retry }
-}
-
-// WithSkipStoreLimit specify if skip the store limit check during Scatter/Split Regions
-func WithSkipStoreLimit() RegionsOption {
-	return func(op *RegionsOp) { op.skipStoreLimit = true }
-}
-
-// GetRegionOp represents available options when getting regions.
-type GetRegionOp struct {
-	needBuckets                  bool
-	allowFollowerHandle          bool
-	outputMustContainAllKeyRange bool
-}
-
-// GetRegionOption configures GetRegionOp.
-type GetRegionOption func(op *GetRegionOp)
-
-// WithBuckets means getting region and its buckets.
-func WithBuckets() GetRegionOption {
-	return func(op *GetRegionOp) { op.needBuckets = true }
-}
-
-// WithAllowFollowerHandle means that client can send request to follower and let it handle this request.
-func WithAllowFollowerHandle() GetRegionOption {
-	return func(op *GetRegionOp) { op.allowFollowerHandle = true }
-}
-
-// WithOutputMustContainAllKeyRange means the output must contain all key ranges.
-func WithOutputMustContainAllKeyRange() GetRegionOption {
-	return func(op *GetRegionOp) { op.outputMustContainAllKeyRange = true }
-}
-
 var (
 	// errUnmatchedClusterID is returned when found a PD with a different cluster ID.
 	errUnmatchedClusterID = errors.New("[pd] unmatched cluster id")
@@ -249,60 +185,6 @@ var (
 	// errInvalidRespHeader is returned when the response doesn't contain service mode info unexpectedly.
 	errNoServiceModeReturned = errors.New("[pd] no service mode returned")
 )
-
-// ClientOption configures client.
-type ClientOption func(c *client)
-
-// WithGRPCDialOptions configures the client with gRPC dial options.
-func WithGRPCDialOptions(opts ...grpc.DialOption) ClientOption {
-	return func(c *client) {
-		c.option.gRPCDialOptions = append(c.option.gRPCDialOptions, opts...)
-	}
-}
-
-// WithCustomTimeoutOption configures the client with timeout option.
-func WithCustomTimeoutOption(timeout time.Duration) ClientOption {
-	return func(c *client) {
-		c.option.timeout = timeout
-	}
-}
-
-// WithForwardingOption configures the client with forwarding option.
-func WithForwardingOption(enableForwarding bool) ClientOption {
-	return func(c *client) {
-		c.option.enableForwarding = enableForwarding
-	}
-}
-
-// WithTSOServerProxyOption configures the client to use TSO server proxy,
-// i.e., the client will send TSO requests to the API leader (the TSO server
-// proxy) which will forward the requests to the TSO servers.
-func WithTSOServerProxyOption(useTSOServerProxy bool) ClientOption {
-	return func(c *client) {
-		c.option.useTSOServerProxy = useTSOServerProxy
-	}
-}
-
-// WithMaxErrorRetry configures the client max retry times when connect meets error.
-func WithMaxErrorRetry(count int) ClientOption {
-	return func(c *client) {
-		c.option.maxRetryTimes = count
-	}
-}
-
-// WithMetricsLabels configures the client with metrics labels.
-func WithMetricsLabels(labels prometheus.Labels) ClientOption {
-	return func(c *client) {
-		c.option.metricsLabels = labels
-	}
-}
-
-// WithInitMetricsOption configures the client with metrics labels.
-func WithInitMetricsOption(initMetrics bool) ClientOption {
-	return func(c *client) {
-		c.option.initMetrics = initMetrics
-	}
-}
 
 var _ Client = (*client)(nil)
 
@@ -451,7 +333,7 @@ func createClientWithKeyspace(
 
 	// Inject the client options.
 	for _, opt := range opts {
-		opt(c)
+		opt(c.option)
 	}
 
 	c.pdSvcDiscovery = newPDServiceDiscovery(
@@ -570,7 +452,7 @@ func newClientWithKeyspaceName(
 
 	// Inject the client options.
 	for _, opt := range opts {
-		opt(c)
+		opt(c.option)
 	}
 
 	updateKeyspaceIDCb := func() error {
@@ -981,7 +863,7 @@ func handleRegionResponse(res *pdpb.GetRegionResponse) *Region {
 }
 
 // GetRegionFromMember implements the RPCClient interface.
-func (c *client) GetRegionFromMember(ctx context.Context, key []byte, memberURLs []string, _ ...GetRegionOption) (*Region, error) {
+func (c *client) GetRegionFromMember(ctx context.Context, key []byte, memberURLs []string, _ ...ClientOption) (*Region, error) {
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span = span.Tracer().StartSpan("pdclient.GetRegionFromMember", opentracing.ChildOf(span.Context()))
 		defer span.Finish()
@@ -1020,7 +902,7 @@ func (c *client) GetRegionFromMember(ctx context.Context, key []byte, memberURLs
 }
 
 // GetRegion implements the RPCClient interface.
-func (c *client) GetRegion(ctx context.Context, key []byte, opts ...GetRegionOption) (*Region, error) {
+func (c *client) GetRegion(ctx context.Context, key []byte, opts ...ClientOption) (*Region, error) {
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span = span.Tracer().StartSpan("pdclient.GetRegion", opentracing.ChildOf(span.Context()))
 		defer span.Finish()
@@ -1030,16 +912,16 @@ func (c *client) GetRegion(ctx context.Context, key []byte, opts ...GetRegionOpt
 	ctx, cancel := context.WithTimeout(ctx, c.option.timeout)
 	defer cancel()
 
-	options := &GetRegionOp{}
+	o := &option{}
 	for _, opt := range opts {
-		opt(options)
+		opt(o)
 	}
 	req := &pdpb.GetRegionRequest{
 		Header:      c.requestHeader(),
 		RegionKey:   key,
-		NeedBuckets: options.needBuckets,
+		NeedBuckets: o.getRegionOp.needBuckets,
 	}
-	serviceClient, cctx := c.getRegionAPIClientAndContext(ctx, options.allowFollowerHandle && c.option.getEnableFollowerHandle())
+	serviceClient, cctx := c.getRegionAPIClientAndContext(ctx, o.getRegionOp.allowFollowerHandle && c.option.getEnableFollowerHandle())
 	if serviceClient == nil {
 		return nil, errs.ErrClientGetProtoClient
 	}
@@ -1059,26 +941,30 @@ func (c *client) GetRegion(ctx context.Context, key []byte, opts ...GetRegionOpt
 }
 
 // GetPrevRegion implements the RPCClient interface.
-func (c *client) GetPrevRegion(ctx context.Context, key []byte, opts ...GetRegionOption) (*Region, error) {
+func (c *client) GetPrevRegion(ctx context.Context, key []byte, opts ...ClientOption) (*Region, error) {
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span = span.Tracer().StartSpan("pdclient.GetPrevRegion", opentracing.ChildOf(span.Context()))
 		defer span.Finish()
 	}
 	start := time.Now()
-	defer func() { cmdDurationGetPrevRegion.Observe(time.Since(start).Seconds()) }()
+	oldOption := *c.option
+	defer func() {
+		cmdDurationGetPrevRegion.Observe(time.Since(start).Seconds())
+		c.option = &oldOption
+	}()
 	ctx, cancel := context.WithTimeout(ctx, c.option.timeout)
 	defer cancel()
 
-	options := &GetRegionOp{}
 	for _, opt := range opts {
-		opt(options)
+		opt(c.option)
 	}
 	req := &pdpb.GetRegionRequest{
 		Header:      c.requestHeader(),
 		RegionKey:   key,
-		NeedBuckets: options.needBuckets,
+		NeedBuckets: c.option.getRegionOp.needBuckets,
 	}
-	serviceClient, cctx := c.getRegionAPIClientAndContext(ctx, options.allowFollowerHandle && c.option.getEnableFollowerHandle())
+	serviceClient, cctx := c.getRegionAPIClientAndContext(ctx,
+		c.option.getRegionOp.allowFollowerHandle && c.option.getEnableFollowerHandle())
 	if serviceClient == nil {
 		return nil, errs.ErrClientGetProtoClient
 	}
@@ -1098,26 +984,30 @@ func (c *client) GetPrevRegion(ctx context.Context, key []byte, opts ...GetRegio
 }
 
 // GetRegionByID implements the RPCClient interface.
-func (c *client) GetRegionByID(ctx context.Context, regionID uint64, opts ...GetRegionOption) (*Region, error) {
+func (c *client) GetRegionByID(ctx context.Context, regionID uint64, opts ...ClientOption) (*Region, error) {
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span = span.Tracer().StartSpan("pdclient.GetRegionByID", opentracing.ChildOf(span.Context()))
 		defer span.Finish()
 	}
+	oldOption := *c.option
 	start := time.Now()
-	defer func() { cmdDurationGetRegionByID.Observe(time.Since(start).Seconds()) }()
+	defer func() {
+		cmdDurationGetRegionByID.Observe(time.Since(start).Seconds())
+		c.option = &oldOption
+	}()
 	ctx, cancel := context.WithTimeout(ctx, c.option.timeout)
 	defer cancel()
 
-	options := &GetRegionOp{}
 	for _, opt := range opts {
-		opt(options)
+		opt(c.option)
 	}
 	req := &pdpb.GetRegionByIDRequest{
 		Header:      c.requestHeader(),
 		RegionId:    regionID,
-		NeedBuckets: options.needBuckets,
+		NeedBuckets: c.option.getRegionOp.needBuckets,
 	}
-	serviceClient, cctx := c.getRegionAPIClientAndContext(ctx, options.allowFollowerHandle && c.option.getEnableFollowerHandle())
+	serviceClient, cctx := c.getRegionAPIClientAndContext(ctx,
+		c.option.getRegionOp.allowFollowerHandle && c.option.getEnableFollowerHandle())
 	if serviceClient == nil {
 		return nil, errs.ErrClientGetProtoClient
 	}
@@ -1137,13 +1027,17 @@ func (c *client) GetRegionByID(ctx context.Context, regionID uint64, opts ...Get
 }
 
 // ScanRegions implements the RPCClient interface.
-func (c *client) ScanRegions(ctx context.Context, key, endKey []byte, limit int, opts ...GetRegionOption) ([]*Region, error) {
+func (c *client) ScanRegions(ctx context.Context, key, endKey []byte, limit int, opts ...ClientOption) ([]*Region, error) {
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span = span.Tracer().StartSpan("pdclient.ScanRegions", opentracing.ChildOf(span.Context()))
 		defer span.Finish()
 	}
+	oldOption := *c.option
 	start := time.Now()
-	defer func() { cmdDurationScanRegions.Observe(time.Since(start).Seconds()) }()
+	defer func() {
+		cmdDurationGetRegionByID.Observe(time.Since(start).Seconds())
+		c.option = &oldOption
+	}()
 
 	var cancel context.CancelFunc
 	scanCtx := ctx
@@ -1151,9 +1045,8 @@ func (c *client) ScanRegions(ctx context.Context, key, endKey []byte, limit int,
 		scanCtx, cancel = context.WithTimeout(ctx, c.option.timeout)
 		defer cancel()
 	}
-	options := &GetRegionOp{}
 	for _, opt := range opts {
-		opt(options)
+		opt(c.option)
 	}
 	req := &pdpb.ScanRegionsRequest{
 		Header:   c.requestHeader(),
@@ -1161,7 +1054,8 @@ func (c *client) ScanRegions(ctx context.Context, key, endKey []byte, limit int,
 		EndKey:   endKey,
 		Limit:    int32(limit),
 	}
-	serviceClient, cctx := c.getRegionAPIClientAndContext(scanCtx, options.allowFollowerHandle && c.option.getEnableFollowerHandle())
+	serviceClient, cctx := c.getRegionAPIClientAndContext(scanCtx,
+		c.option.getRegionOp.allowFollowerHandle && c.option.getEnableFollowerHandle())
 	if serviceClient == nil {
 		return nil, errs.ErrClientGetProtoClient
 	}
@@ -1187,23 +1081,25 @@ func (c *client) ScanRegions(ctx context.Context, key, endKey []byte, limit int,
 }
 
 // BatchScanRegions implements the RPCClient interface.
-func (c *client) BatchScanRegions(ctx context.Context, ranges []KeyRange, limit int, opts ...GetRegionOption) ([]*Region, error) {
+func (c *client) BatchScanRegions(ctx context.Context, ranges []KeyRange, limit int, opts ...ClientOption) ([]*Region, error) {
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span = span.Tracer().StartSpan("pdclient.BatchScanRegions", opentracing.ChildOf(span.Context()))
 		defer span.Finish()
 	}
+	oldOption := *c.option
 	start := time.Now()
-	defer func() { cmdDurationBatchScanRegions.Observe(time.Since(start).Seconds()) }()
-
+	defer func() {
+		cmdDurationGetRegionByID.Observe(time.Since(start).Seconds())
+		c.option = &oldOption
+	}()
 	var cancel context.CancelFunc
 	scanCtx := ctx
 	if _, ok := ctx.Deadline(); !ok {
 		scanCtx, cancel = context.WithTimeout(ctx, c.option.timeout)
 		defer cancel()
 	}
-	options := &GetRegionOp{}
 	for _, opt := range opts {
-		opt(options)
+		opt(c.option)
 	}
 	pbRanges := make([]*pdpb.KeyRange, 0, len(ranges))
 	for _, r := range ranges {
@@ -1211,12 +1107,13 @@ func (c *client) BatchScanRegions(ctx context.Context, ranges []KeyRange, limit 
 	}
 	req := &pdpb.BatchScanRegionsRequest{
 		Header:             c.requestHeader(),
-		NeedBuckets:        options.needBuckets,
+		NeedBuckets:        c.option.getRegionOp.needBuckets,
 		Ranges:             pbRanges,
 		Limit:              int32(limit),
-		ContainAllKeyRange: options.outputMustContainAllKeyRange,
+		ContainAllKeyRange: c.option.getRegionOp.outputMustContainAllKeyRange,
 	}
-	serviceClient, cctx := c.getRegionAPIClientAndContext(scanCtx, options.allowFollowerHandle && c.option.getEnableFollowerHandle())
+	serviceClient, cctx := c.getRegionAPIClientAndContext(scanCtx,
+		c.option.getRegionOp.allowFollowerHandle && c.option.getEnableFollowerHandle())
 	if serviceClient == nil {
 		return nil, errs.ErrClientGetProtoClient
 	}
@@ -1537,7 +1434,9 @@ func (c *client) SplitRegions(ctx context.Context, splitKeys [][]byte, opts ...R
 
 func (c *client) requestHeader() *pdpb.RequestHeader {
 	return &pdpb.RequestHeader{
-		ClusterId: c.pdSvcDiscovery.GetClusterID(),
+		ClusterId:       c.pdSvcDiscovery.GetClusterID(),
+		CallerId:        string(c.option.callerID),
+		CallerComponent: string(c.option.callerComponent),
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 
 	"github.com/pingcap/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/tikv/pd/client/caller"
 	"google.golang.org/grpc"
 )
 
@@ -63,6 +64,11 @@ type option struct {
 	dynamicOptions [dynamicOptionCount]atomic.Value
 
 	enableTSOFollowerProxyCh chan struct{}
+
+	callerID        caller.ID
+	callerComponent caller.Component
+
+	getRegionOp GetRegionOp
 }
 
 // newOption creates a new PD client option with the default values set.
@@ -126,4 +132,132 @@ func (o *option) setEnableTSOFollowerProxy(enable bool) {
 // getEnableTSOFollowerProxy gets the TSO Follower Proxy option.
 func (o *option) getEnableTSOFollowerProxy() bool {
 	return o.dynamicOptions[EnableTSOFollowerProxy].Load().(bool)
+}
+
+// ClientOption configures client.
+type ClientOption func(o *option)
+
+// WithGRPCDialOptions configures the client with gRPC dial options.
+func WithGRPCDialOptions(opts ...grpc.DialOption) ClientOption {
+	return func(o *option) {
+		o.gRPCDialOptions = append(o.gRPCDialOptions, opts...)
+	}
+}
+
+// WithCustomTimeoutOption configures the client with timeout option.
+func WithCustomTimeoutOption(timeout time.Duration) ClientOption {
+	return func(o *option) {
+		o.timeout = timeout
+	}
+}
+
+// WithForwardingOption configures the client with forwarding option.
+func WithForwardingOption(enableForwarding bool) ClientOption {
+	return func(o *option) {
+		o.enableForwarding = enableForwarding
+	}
+}
+
+// WithTSOServerProxyOption configures the client to use TSO server proxy,
+// i.e., the client will send TSO requests to the API leader (the TSO server
+// proxy) which will forward the requests to the TSO servers.
+func WithTSOServerProxyOption(useTSOServerProxy bool) ClientOption {
+	return func(o *option) {
+		o.useTSOServerProxy = useTSOServerProxy
+	}
+}
+
+// WithMaxErrorRetry configures the client max retry times when connect meets error.
+func WithMaxErrorRetry(count int) ClientOption {
+	return func(o *option) {
+		o.maxRetryTimes = count
+	}
+}
+
+// WithMetricsLabels configures the client with metrics labels.
+func WithMetricsLabels(labels prometheus.Labels) ClientOption {
+	return func(o *option) {
+		o.metricsLabels = labels
+	}
+}
+
+// WithInitMetricsOption configures the client with metrics labels.
+func WithInitMetricsOption(initMetrics bool) ClientOption {
+	return func(o *option) {
+		o.initMetrics = initMetrics
+	}
+}
+
+// WithCallerID configures the client with caller ID.
+func WithCallerID(id caller.ID) ClientOption {
+	return func(o *option) {
+		o.callerID = id
+	}
+}
+
+// WithCallerComponent configures the client with caller component.
+func WithCallerComponent(component caller.Component) ClientOption {
+	return func(o *option) {
+		o.callerComponent = component
+	}
+}
+
+// GetStoreOp represents available options when getting stores.
+type GetStoreOp struct {
+	excludeTombstone bool
+}
+
+// GetStoreOption configures GetStoreOp.
+type GetStoreOption func(*GetStoreOp)
+
+// WithExcludeTombstone excludes tombstone stores from the result.
+func WithExcludeTombstone() GetStoreOption {
+	return func(op *GetStoreOp) { op.excludeTombstone = true }
+}
+
+// RegionsOp represents available options when operate regions
+type RegionsOp struct {
+	group          string
+	retryLimit     uint64
+	skipStoreLimit bool
+}
+
+// RegionsOption configures RegionsOp
+type RegionsOption func(op *RegionsOp)
+
+// WithGroup specify the group during Scatter/Split Regions
+func WithGroup(group string) RegionsOption {
+	return func(op *RegionsOp) { op.group = group }
+}
+
+// WithRetry specify the retry limit during Scatter/Split Regions
+func WithRetry(retry uint64) RegionsOption {
+	return func(op *RegionsOp) { op.retryLimit = retry }
+}
+
+// WithSkipStoreLimit specify if skip the store limit check during Scatter/Split Regions
+func WithSkipStoreLimit() RegionsOption {
+	return func(op *RegionsOp) { op.skipStoreLimit = true }
+}
+
+// GetRegionOp represents available options when getting regions.
+type GetRegionOp struct {
+	needBuckets                  bool
+	allowFollowerHandle          bool
+	outputMustContainAllKeyRange bool
+}
+
+// WithBuckets means getting region and its buckets.
+func WithBuckets() ClientOption {
+	return func(o *option) { o.getRegionOp.needBuckets = true }
+}
+
+// WithAllowFollowerHandle means that client can send request to follower and let it handle this request.
+func WithAllowFollowerHandle() ClientOption {
+	return func(o *option) { o.getRegionOp.allowFollowerHandle = true }
+}
+
+// WithOutputMustContainAllKeyRange means the output must contain all key ranges.
+func WithOutputMustContainAllKeyRange() ClientOption {
+	return func(o *option) { o.getRegionOp.outputMustContainAllKeyRange = true }
 }
