@@ -35,6 +35,7 @@ import (
 	"github.com/tikv/pd/pkg/storage/endpoint"
 	"github.com/tikv/pd/pkg/storage/kv"
 	"github.com/tikv/pd/pkg/utils/etcdutil"
+	"github.com/tikv/pd/pkg/utils/keypath"
 	"github.com/tikv/pd/pkg/utils/logutil"
 	"github.com/tikv/pd/pkg/utils/syncutil"
 	"github.com/tikv/pd/pkg/utils/typeutil"
@@ -88,8 +89,8 @@ func NewKeyspaceGroupManager(
 ) *GroupManager {
 	ctx, cancel := context.WithCancel(ctx)
 	groups := make(map[endpoint.UserKind]*indexedHeap)
-	for i := 0; i < int(endpoint.UserKindCount); i++ {
-		groups[endpoint.UserKind(i)] = newIndexedHeap(int(constant.MaxKeyspaceGroupCountInUse))
+	for i := range endpoint.UserKindCount {
+		groups[i] = newIndexedHeap(int(constant.MaxKeyspaceGroupCountInUse))
 	}
 	m := &GroupManager{
 		ctx:                ctx,
@@ -104,7 +105,7 @@ func NewKeyspaceGroupManager(
 	// If the etcd client is not nil, start the watch loop for the registered tso servers.
 	// The PD(TSO) Client relies on this info to discover tso servers.
 	if m.client != nil {
-		m.initTSONodesWatcher(m.client, global.ClusterID())
+		m.initTSONodesWatcher(m.client)
 		m.tsoNodesWatcher.StartWatchLoop()
 	}
 	return m
@@ -160,8 +161,7 @@ func (m *GroupManager) allocNodesToAllKeyspaceGroups(ctx context.Context) {
 	defer m.wg.Done()
 	ticker := time.NewTicker(allocNodesToKeyspaceGroupsInterval)
 	failpoint.Inject("acceleratedAllocNodes", func() {
-		ticker.Stop()
-		ticker = time.NewTicker(time.Millisecond * 100)
+		ticker.Reset(time.Millisecond * 100)
 	})
 	defer ticker.Stop()
 	log.Info("start to alloc nodes to all keyspace groups")
@@ -216,8 +216,8 @@ func (m *GroupManager) allocNodesToAllKeyspaceGroups(ctx context.Context) {
 	}
 }
 
-func (m *GroupManager) initTSONodesWatcher(client *clientv3.Client, clusterID uint64) {
-	tsoServiceKey := discovery.TSOPath(clusterID)
+func (m *GroupManager) initTSONodesWatcher(client *clientv3.Client) {
+	tsoServiceKey := keypath.TSOPath()
 
 	putFn := func(kv *mvccpb.KeyValue) error {
 		s := &discovery.ServiceRegistryEntry{}

@@ -14,15 +14,6 @@
 
 package global
 
-import (
-	"fmt"
-	"sync/atomic"
-)
-
-// clusterID is the unique ID for the cluster.
-// TODO: remove it to a proper place.
-var clusterID atomic.Value
-
 const (
 	dcLocationConfigEtcdPrefixFormat = "/pd/%d/dc-location"
 	dcLocationPathFormat             = "/pd/%d/dc-location/%d"
@@ -33,16 +24,6 @@ const (
 	leaderPathFormat                 = "/pd/%d/leader"
 )
 
-// ClusterID returns the cluster ID.
-func ClusterID() uint64 {
-	return clusterID.Load().(uint64)
-}
-
-// SetClusterID sets the cluster ID.
-func SetClusterID(id uint64) {
-	clusterID.Store(id)
-}
-
-func GetLeaderPath() string {
-	return fmt.Sprintf(leaderPathFormat, ClusterID())
-}
+// func GetLeaderPath() string {
+// 	return fmt.Sprintf(leaderPathFormat, ClusterID())
+// }
