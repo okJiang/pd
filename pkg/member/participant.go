@@ -28,10 +28,9 @@ import (
 	"github.com/pingcap/log"
 	"github.com/tikv/pd/pkg/election"
 	"github.com/tikv/pd/pkg/errs"
-	"github.com/tikv/pd/pkg/global"
 	"github.com/tikv/pd/pkg/mcs/utils/constant"
-	"github.com/tikv/pd/pkg/storage/endpoint"
 	"github.com/tikv/pd/pkg/utils/etcdutil"
+	"github.com/tikv/pd/pkg/utils/keypath"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
@@ -91,7 +90,7 @@ func (m *Participant) InitInfo(p participant, purpose string) {
 	m.leadership = election.NewLeadership(m.client, purpose)
 	m.lastLeaderUpdatedTime.Store(time.Now())
 	log.Info("participant joining election", zap.String("participant-info", p.String()),
-		zap.String("leader-path", endpoint.SchedulingPrimaryPath()))
+		zap.String("leader-path", keypath.SchedulingPrimaryPath()))
 }
 
 // ID returns the unique ID for this participant in the election group
@@ -204,7 +203,7 @@ func (*Participant) PreCheckLeader() error {
 // getPersistentLeader gets the corresponding leader from etcd by given leaderPath (as the key).
 func (m *Participant) getPersistentLeader() (participant, int64, error) {
 	leader := NewParticipantByService(m.serviceName)
-	ok, rev, err := etcdutil.GetProtoMsgWithModRev(m.client, endpoint.SchedulingPrimaryPath(), leader)
+	ok, rev, err := etcdutil.GetProtoMsgWithModRev(m.client, keypath.SchedulingPrimaryPath(), leader)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -286,7 +285,7 @@ func (m *Participant) getLeaderPriorityPath(id uint64) string {
 
 // GetDCLocationPathPrefix returns the dc-location path prefix of the cluster.
 func (m *Participant) GetDCLocationPathPrefix() string {
-	return fmt.Sprintf(dcLocationConfigEtcdPrefixFormat, global.ClusterID())
+	return fmt.Sprintf(dcLocationConfigEtcdPrefixFormat, keypath.ClusterID())
 }
 
 // GetDCLocationPath returns the dc-location path of a member with the given member ID.

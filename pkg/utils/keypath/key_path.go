@@ -234,11 +234,11 @@ func RegionPath(regionID uint64) string {
 	return fmt.Sprintf(regionPathFormat, ClusterID(), regionID)
 }
 
-func resourceGroupSettingKeyPath(groupName string) string {
+func ResourceGroupSettingKeyPath(groupName string) string {
 	return fmt.Sprintf(resourceGroupSettingPathFormat, groupName)
 }
 
-func resourceGroupStateKeyPath(groupName string) string {
+func ResourceGroupStateKeyPath(groupName string) string {
 	return fmt.Sprintf(resourceGroupStatePathFormat, groupName)
 }
 
