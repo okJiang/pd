@@ -43,10 +43,9 @@ func TestMain(m *testing.M) {
 type leaderServerTestSuite struct {
 	suite.Suite
 
-	ctx        context.Context
-	cancel     context.CancelFunc
-	svrs       map[string]*Server
-	leaderPath string
+	ctx    context.Context
+	cancel context.CancelFunc
+	svrs   map[string]*Server
 }
 
 func TestLeaderServerTestSuite(t *testing.T) {
@@ -77,7 +76,6 @@ func (suite *leaderServerTestSuite) SetupSuite() {
 	for range 3 {
 		svr := <-ch
 		suite.svrs[svr.GetAddr()] = svr
-		suite.leaderPath = svr.GetMember().GetLeaderPath()
 	}
 }
 

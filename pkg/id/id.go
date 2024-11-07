@@ -15,24 +15,16 @@
 package id
 
 import (
-	"fmt"
-
 	"github.com/pingcap/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tikv/pd/pkg/errs"
-	"github.com/tikv/pd/pkg/global"
 	"github.com/tikv/pd/pkg/storage/kv"
 	"github.com/tikv/pd/pkg/utils/etcdutil"
+	"github.com/tikv/pd/pkg/utils/keypath"
 	"github.com/tikv/pd/pkg/utils/syncutil"
 	"github.com/tikv/pd/pkg/utils/typeutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
-)
-
-const (
-	leaderPathFormat = "/pd/%d/leader"
-	// /pd/{cluster_id}/{allocator_path}
-	allocIDPathFormat = "/pd/%d/%s"
 )
 
 // Allocator is the allocator to generate unique ID.
@@ -132,9 +124,9 @@ func (alloc *allocatorImpl) Rebase() error {
 }
 
 func (alloc *allocatorImpl) rebaseLocked(checkCurrEnd bool) error {
-	key := alloc.getAllocIDPath()
+	key := keypath.GetAllocIDPath(alloc.allocPath)
 
-	leaderPath := fmt.Sprintf(leaderPathFormat, global.ClusterID())
+	leaderPath := keypath.GetLeaderPath()
 	var (
 		cmps = []clientv3.Cmp{clientv3.Compare(clientv3.Value(leaderPath), "=", alloc.member)}
 		end  uint64
@@ -180,8 +172,4 @@ func (alloc *allocatorImpl) rebaseLocked(checkCurrEnd bool) error {
 	log.Info("idAllocator allocates a new id", zap.Uint64("new-end", end), zap.Uint64("new-base", alloc.base),
 		zap.String("label", alloc.label), zap.Bool("check-curr-end", checkCurrEnd))
 	return nil
-}
-
-func (alloc *allocatorImpl) getAllocIDPath() string {
-	return fmt.Sprintf(allocIDPathFormat, global.ClusterID(), alloc.allocPath)
 }

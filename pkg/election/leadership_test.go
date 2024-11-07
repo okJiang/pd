@@ -24,6 +24,7 @@ import (
 	"github.com/pingcap/failpoint"
 	"github.com/stretchr/testify/require"
 	"github.com/tikv/pd/pkg/utils/etcdutil"
+	"github.com/tikv/pd/pkg/utils/keypath"
 	"github.com/tikv/pd/pkg/utils/testutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
@@ -37,8 +38,8 @@ func TestLeadership(t *testing.T) {
 	defer clean()
 
 	// Campaign the same leadership
-	leadership1 := NewLeadership(client, "/test_leader", "test_leader_1")
-	leadership2 := NewLeadership(client, "/test_leader", "test_leader_2")
+	leadership1 := NewLeadership(client, "test_leader_1")
+	leadership2 := NewLeadership(client, "test_leader_2")
 
 	// leadership1 starts first and get the leadership
 	err := leadership1.Campaign(defaultLeaseTimeout, "test_leader_1")
@@ -113,46 +114,44 @@ func TestLeadership(t *testing.T) {
 
 func TestExitWatch(t *testing.T) {
 	re := require.New(t)
-	leaderKey := "/test_leader"
 	re.NoError(failpoint.Enable("github.com/tikv/pd/pkg/election/fastTick", "return(true)"))
 	re.NoError(failpoint.Enable("github.com/tikv/pd/pkg/utils/etcdutil/fastTick", "return(true)"))
 	// Case1: close the client before the watch loop starts
-	checkExitWatch(t, leaderKey, func(_ *embed.Etcd, client *clientv3.Client) func() {
+	checkExitWatch(t, func(_ *embed.Etcd, client *clientv3.Client) func() {
 		re.NoError(failpoint.Enable("github.com/tikv/pd/server/delayWatcher", `pause`))
 		client.Close()
 		re.NoError(failpoint.Disable("github.com/tikv/pd/server/delayWatcher"))
 		return func() {}
 	})
 	// Case2: close the client when the watch loop is running
-	checkExitWatch(t, leaderKey, func(_ *embed.Etcd, client *clientv3.Client) func() {
+	checkExitWatch(t, func(_ *embed.Etcd, client *clientv3.Client) func() {
 		// Wait for the watch loop to start
 		time.Sleep(500 * time.Millisecond)
 		client.Close()
 		return func() {}
 	})
 	// Case3: delete the leader key
-	checkExitWatch(t, leaderKey, func(_ *embed.Etcd, client *clientv3.Client) func() {
-		leaderKey := leaderKey
-		_, err := client.Delete(context.Background(), leaderKey)
+	checkExitWatch(t, func(_ *embed.Etcd, client *clientv3.Client) func() {
+		_, err := client.Delete(context.Background(), keypath.GetLeaderPath())
 		re.NoError(err)
 		return func() {}
 	})
 	// Case4: close the server before the watch loop starts
-	checkExitWatch(t, leaderKey, func(server *embed.Etcd, _ *clientv3.Client) func() {
+	checkExitWatch(t, func(server *embed.Etcd, _ *clientv3.Client) func() {
 		re.NoError(failpoint.Enable("github.com/tikv/pd/server/delayWatcher", `pause`))
 		server.Close()
 		re.NoError(failpoint.Disable("github.com/tikv/pd/server/delayWatcher"))
 		return func() {}
 	})
 	// Case5: close the server when the watch loop is running
-	checkExitWatch(t, leaderKey, func(server *embed.Etcd, _ *clientv3.Client) func() {
+	checkExitWatch(t, func(server *embed.Etcd, _ *clientv3.Client) func() {
 		// Wait for the watch loop to start
 		time.Sleep(500 * time.Millisecond)
 		server.Close()
 		return func() {}
 	})
 	// Case6: transfer leader without client reconnection.
-	checkExitWatch(t, leaderKey, func(server *embed.Etcd, client *clientv3.Client) func() {
+	checkExitWatch(t, func(server *embed.Etcd, client *clientv3.Client) func() {
 		cfg1 := server.Config()
 		etcd2 := etcdutil.MustAddEtcdMember(t, &cfg1, client)
 		client2, err := etcdutil.CreateEtcdClient(nil, etcd2.Config().ListenClientUrls)
@@ -160,14 +159,14 @@ func TestExitWatch(t *testing.T) {
 		// close the original leader
 		server.Server.HardStop()
 		// delete the leader key with the new client
-		client2.Delete(context.Background(), leaderKey)
+		client2.Delete(context.Background(), keypath.GetLeaderPath())
 		return func() {
 			etcd2.Close()
 			client2.Close()
 		}
 	})
 	// Case7: loss the quorum when the watch loop is running
-	checkExitWatch(t, leaderKey, func(server *embed.Etcd, client *clientv3.Client) func() {
+	checkExitWatch(t, func(server *embed.Etcd, client *clientv3.Client) func() {
 		cfg1 := server.Config()
 		etcd2 := etcdutil.MustAddEtcdMember(t, &cfg1, client)
 		cfg2 := etcd2.Config()
@@ -185,7 +184,7 @@ func TestExitWatch(t *testing.T) {
 	re.NoError(failpoint.Disable("github.com/tikv/pd/pkg/utils/etcdutil/fastTick"))
 }
 
-func checkExitWatch(t *testing.T, leaderKey string, injectFunc func(server *embed.Etcd, client *clientv3.Client) func()) {
+func checkExitWatch(t *testing.T, injectFunc func(server *embed.Etcd, client *clientv3.Client) func()) {
 	re := require.New(t)
 	servers, client1, clean := etcdutil.NewTestEtcdCluster(t, 1)
 	defer clean()
@@ -193,11 +192,11 @@ func checkExitWatch(t *testing.T, leaderKey string, injectFunc func(server *embe
 	re.NoError(err)
 	defer client2.Close()
 
-	leadership1 := NewLeadership(client1, leaderKey, "test_leader_1")
-	leadership2 := NewLeadership(client2, leaderKey, "test_leader_2")
+	leadership1 := NewLeadership(client1, "test_leader_1")
+	leadership2 := NewLeadership(client2, "test_leader_2")
 	err = leadership1.Campaign(defaultLeaseTimeout, "test_leader_1")
 	re.NoError(err)
-	resp, err := client2.Get(context.Background(), leaderKey)
+	resp, err := client2.Get(context.Background(), keypath.GetLeaderPath())
 	re.NoError(err)
 	done := make(chan struct{})
 	go func() {
@@ -230,8 +229,8 @@ func TestRequestProgress(t *testing.T) {
 		defer client2.Close()
 
 		leaderKey := "/test_leader"
-		leadership1 := NewLeadership(client1, leaderKey, "test_leader_1")
-		leadership2 := NewLeadership(client2, leaderKey, "test_leader_2")
+		leadership1 := NewLeadership(client1, "test_leader_1")
+		leadership2 := NewLeadership(client2, "test_leader_2")
 		err = leadership1.Campaign(defaultLeaseTimeout, "test_leader_1")
 		re.NoError(err)
 
@@ -267,7 +266,7 @@ func TestCampaignTimes(t *testing.T) {
 	re := require.New(t)
 	_, client, clean := etcdutil.NewTestEtcdCluster(t, 1)
 	defer clean()
-	leadership := NewLeadership(client, "test_leader", "test_leader")
+	leadership := NewLeadership(client, "test_leader")
 
 	// all the campaign times are within the timeout.
 	campaignTimesRecordTimeout = 10 * time.Second

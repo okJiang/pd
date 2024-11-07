@@ -28,7 +28,6 @@ import (
 	"github.com/pingcap/kvproto/pkg/tsopb"
 	"github.com/pingcap/log"
 	"github.com/tikv/pd/pkg/balancer"
-	"github.com/tikv/pd/pkg/global"
 	"github.com/tikv/pd/pkg/mcs/discovery"
 	"github.com/tikv/pd/pkg/mcs/utils/constant"
 	"github.com/tikv/pd/pkg/slice"
@@ -1152,7 +1151,7 @@ func (m *GroupManager) GetKeyspaceGroupPrimaryByID(id uint32) (string, error) {
 		return "", ErrKeyspaceGroupNotExists(id)
 	}
 
-	primaryPath := endpoint.KeyspaceGroupPrimaryPath(id)
+	primaryPath := keypath.KeyspaceGroupPrimaryPath(id)
 	leader := &tsopb.Participant{}
 	ok, _, err := etcdutil.GetProtoMsgWithModRev(m.client, primaryPath, leader)
 	if err != nil {

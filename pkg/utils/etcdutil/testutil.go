@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tikv/pd/pkg/global"
+	"github.com/tikv/pd/pkg/utils/keypath"
 	"github.com/tikv/pd/pkg/utils/tempurl"
 	"github.com/tikv/pd/pkg/utils/testutil"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -58,7 +58,7 @@ func genRandName() string {
 // NewTestEtcdCluster is used to create a etcd cluster for the unit test purpose.
 func NewTestEtcdCluster(t *testing.T, count int) (servers []*embed.Etcd, etcdClient *clientv3.Client, clean func()) {
 	re := require.New(t)
-	global.SetClusterID(100)
+	keypath.SetClusterID(100)
 	servers = make([]*embed.Etcd, 0, count)
 
 	cfg := NewTestSingleConfig()
@@ -99,7 +99,7 @@ func NewTestEtcdCluster(t *testing.T, count int) (servers []*embed.Etcd, etcdCli
 				server.Close()
 			}
 		}
-		global.SetClusterID(0)
+		keypath.SetClusterID(0)
 	}
 
 	return

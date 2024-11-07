@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tikv/pd/pkg/global"
 	"github.com/tikv/pd/pkg/utils/etcdutil"
+	"github.com/tikv/pd/pkg/utils/keypath"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -30,14 +30,14 @@ func TestEtcd(t *testing.T) {
 	re := require.New(t)
 	_, client, clean := etcdutil.NewTestEtcdCluster(t, 1)
 	defer clean()
-	global.SetClusterID(100)
+	keypath.SetClusterID(100)
 
 	kv := NewEtcdKVBase(client)
 	testReadWrite(re, kv)
 	testRange(re, kv)
 	testSaveMultiple(re, kv, 20)
 	testLoadConflict(re, kv)
-	global.SetClusterID(0)
+	keypath.SetClusterID(0)
 }
 
 func TestLevelDB(t *testing.T) {

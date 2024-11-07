@@ -137,10 +137,6 @@ type ElectionMember interface {
 	GetLeadership() *election.Leadership
 	// GetLastLeaderUpdatedTime returns the last time when the leader is updated.
 	GetLastLeaderUpdatedTime() time.Time
-	// GetDCLocationPathPrefix returns the dc-location path prefix of the cluster.
-	GetDCLocationPathPrefix() string
-	// GetDCLocationPath returns the dc-location path of a member with the given member ID.
-	GetDCLocationPath(id uint64) string
 	// PreCheckLeader does some pre-check before checking whether it's the leader.
 	PreCheckLeader() error
 }

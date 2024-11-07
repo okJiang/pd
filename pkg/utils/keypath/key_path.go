@@ -77,6 +77,9 @@ const (
 	// we use uint64 to represent ID, the max length of uint64 is 20.
 	keyLen = 20
 
+	// ClusterIDPath is the path to store cluster id
+	ClusterIDPath = "/pd/cluster_id"
+
 	// /pd/{cluster_id}
 	rootPathFormat = "/pd/%d"
 
@@ -130,6 +133,15 @@ const (
 	keyspaceMetaPrefixFormat           = "/pd/%d/keyspaces/meta/"
 	keyspaceMetaPathFormat             = "/pd/%d/keyspaces/meta/%08d"
 	keyspaceIDPathFormat               = "/pd/%d/keyspaces/id/%s"
+	dcLocationConfigEtcdPrefixFormat   = "/pd/%d/dc-location"
+	dcLocationPathFormat               = "/pd/%d/dc-location/%d"
+	memberLeaderPriorityPathFormat     = "/pd/%d/member/%d/leader_priority"
+	memberBinaryDeployPathFormat       = "/pd/%d/member/%d/deploy_path"
+	memberGitHashPath                  = "/pd/%d/member/%d/git_hash"
+	memberBinaryVersionPathFormat      = "/pd/%d/member/%d/binary_version"
+	leaderPathFormat                   = "/pd/%d/leader"
+	// /pd/{cluster_id}/{allocator_path}
+	allocIDPathFormat = "/pd/%d/%s"
 
 	tsoSvcRootPathFormat        = "/ms/%d/tso"
 	schedulingSvcRootPathFormat = "/ms/%d/scheduling"
@@ -221,11 +233,11 @@ func ExtractStoreIDFromPath(path string) (uint64, error) {
 	return strconv.ParseUint(idStr, 10, 64)
 }
 
-func storeLeaderWeightPath(storeID uint64) string {
+func StoreLeaderWeightPath(storeID uint64) string {
 	return fmt.Sprintf(storeLeaderWeightPathFormat, storeID)
 }
 
-func storeRegionWeightPath(storeID uint64) string {
+func StoreRegionWeightPath(storeID uint64) string {
 	return fmt.Sprintf(storeRegionWeightPathFormat, storeID)
 }
 
@@ -242,23 +254,23 @@ func ResourceGroupStateKeyPath(groupName string) string {
 	return fmt.Sprintf(resourceGroupStatePathFormat, groupName)
 }
 
-func ruleKeyPath(ruleKey string) string {
+func RuleKeyPath(ruleKey string) string {
 	return fmt.Sprintf(ruleKeyPathFormat, ruleKey)
 }
 
-func ruleGroupIDPath(groupID string) string {
+func RuleGroupIDPath(groupID string) string {
 	return fmt.Sprintf(ruleGroupIDPathFormat, groupID)
 }
 
-func regionLabelKeyPath(ruleKey string) string {
+func RegionLabelKeyPath(ruleKey string) string {
 	return fmt.Sprintf(regionLabelPathFormat, ruleKey)
 }
 
-func replicationModePath(mode string) string {
+func ReplicationModePath(mode string) string {
 	return fmt.Sprintf(replicationModePathFormat, mode)
 }
 
-func gcSafePointPath() string {
+func GCSafePointPath() string {
 	return fmt.Sprintf(gcSafePointPathPrefixFormat, ClusterID())
 }
 
@@ -267,7 +279,7 @@ func GCSafePointServicePrefixPath() string {
 	return fmt.Sprintf(gcSafePointServicePrefixPathFormat, ClusterID())
 }
 
-func gcSafePointServicePath(serviceID string) string {
+func GCSafePointServicePath(serviceID string) string {
 	return fmt.Sprintf(gcSafePointServicePathFormat, ClusterID(), serviceID)
 }
 
@@ -482,4 +494,38 @@ func ServicePath(serviceName string) string {
 // TSOPath returns the path to store TSO addresses.
 func TSOPath() string {
 	return ServicePath("tso")
+}
+
+func GetLeaderPath() string {
+	return fmt.Sprintf(leaderPathFormat, ClusterID())
+}
+
+func GetAllocIDPath(allocPath string) string {
+	return fmt.Sprintf(allocIDPathFormat, ClusterID(), allocPath)
+}
+
+func GetMemberLeaderPriorityPath(id uint64) string {
+	return fmt.Sprintf(memberLeaderPriorityPathFormat, ClusterID(), id)
+}
+
+// GetDCLocationPathPrefix returns the dc-location path prefix of the cluster.
+func GetDCLocationPathPrefix() string {
+	return fmt.Sprintf(dcLocationConfigEtcdPrefixFormat, ClusterID())
+}
+
+// GetDCLocationPath returns the dc-location path of a member with the given member ID.
+func GetDCLocationPath(id uint64) string {
+	return fmt.Sprintf(dcLocationPathFormat, ClusterID(), id)
+}
+
+func GetMemberBinaryDeployPath(id uint64) string {
+	return fmt.Sprintf(memberBinaryDeployPathFormat, ClusterID(), id)
+}
+
+func GetMemberGitHashPath(id uint64) string {
+	return fmt.Sprintf(memberGitHashPath, ClusterID(), id)
+}
+
+func GetMemberBinaryVersionPath(id uint64) string {
+	return fmt.Sprintf(memberBinaryVersionPathFormat, ClusterID(), id)
 }
