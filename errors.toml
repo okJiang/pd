@@ -841,11 +841,6 @@ error = '''
 get allocator manager failed, %s
 '''
 
-["PD:tso:ErrGetLocalAllocator"]
-error = '''
-get local allocator failed, %s
-'''
-
 ["PD:tso:ErrGetMinTS"]
 error = '''
 get min ts failed, %s
@@ -899,11 +894,6 @@ proxy tso timeout
 ["PD:tso:ErrResetUserTimestamp"]
 error = '''
 reset user timestamp failed, %s
-'''
-
-["PD:tso:ErrSetLocalTSOConfig"]
-error = '''
-set local tso config failed, %s
 '''
 
 ["PD:tso:ErrSyncMaxTS"]

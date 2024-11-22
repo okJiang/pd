@@ -14,19 +14,9 @@
 
 package tso
 
-// FilterDCLocation will filter out the allocatorGroup with a given dcLocation.
-func FilterDCLocation(dcLocation string) func(ag *allocatorGroup) bool {
-	return func(ag *allocatorGroup) bool { return ag.dcLocation == dcLocation }
-}
-
 // FilterUninitialized will filter out the allocatorGroup uninitialized.
 func FilterUninitialized() func(ag *allocatorGroup) bool {
 	return func(ag *allocatorGroup) bool { return !ag.allocator.IsInitialize() }
-}
-
-// FilterAvailableLeadership will filter out the allocatorGroup whose leadership is available.
-func FilterAvailableLeadership() func(ag *allocatorGroup) bool {
-	return func(ag *allocatorGroup) bool { return ag.leadership.Check() }
 }
 
 // FilterUnavailableLeadership will filter out the allocatorGroup whose leadership is unavailable.
