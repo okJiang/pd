@@ -17,9 +17,7 @@ package realcluster
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -103,16 +101,7 @@ func (s *clusterSuite) restart() {
 }
 
 func destroy(t *testing.T, tag string) {
-	cmdStr := fmt.Sprintf("ps -ef | grep %s | awk '{print $2}'", tag)
-	cmd := exec.Command("sh", "-c", cmdStr)
-	bytes, err := cmd.Output()
-	require.NoError(t, err)
-	pids := string(bytes)
-	pidArr := strings.Split(pids, "\n")
-	for _, pid := range pidArr {
-		// nolint:errcheck
-		runCommand("sh", "-c", "kill -9 "+pid)
-	}
+	killProcess(t, "grep "+tag)
 	log.Info("destroy success", zap.String("tag", tag))
 }
 

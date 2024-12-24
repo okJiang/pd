@@ -15,10 +15,13 @@
 package realcluster
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const physicalShiftBits = 18
@@ -49,6 +52,19 @@ func runCommandWithOutput(cmdStr string) ([]string, error) {
 	}
 	output := strings.Split(string(bytes), "\n")
 	return output, nil
+}
+
+func killProcess(t require.TestingT, grepStr string) {
+	cmdStr := fmt.Sprintf("ps -ef | grep %s | awk '{print $2}'", grepStr)
+	cmd := exec.Command("sh", "-c", cmdStr)
+	bytes, err := cmd.Output()
+	require.NoError(t, err)
+	pids := string(bytes)
+	pidArr := strings.Split(pids, "\n")
+	for _, pid := range pidArr {
+		// nolint:errcheck
+		runCommand("sh", "-c", "kill -9 "+pid)
+	}
 }
 
 func fileExists(path string) bool {
