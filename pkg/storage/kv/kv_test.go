@@ -109,6 +109,9 @@ func testRange(re *require.Assertions, kv Base) {
 		re.Equal(testCase.expect, ks)
 		re.Equal(testCase.expect, vs)
 	}
+
+	_, _, err := kv.LoadRange("", "\x00", 100)
+	re.Error(err)
 }
 
 func testSaveMultiple(re *require.Assertions, kv Base, count int) {

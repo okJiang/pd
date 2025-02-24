@@ -71,6 +71,9 @@ func (kv *etcdKVBase) LoadRange(key, endKey string, limit int) ([]string, []stri
 	var OpOption []clientv3.OpOption
 	// If endKey is "\x00", it means to scan with prefix.
 	if endKey == "\x00" {
+		if key == "" {
+			return nil, nil, errs.ErrEtcdKVGet.FastGen("start key should not be empty")
+		}
 		OpOption = append(OpOption, clientv3.WithPrefix())
 	} else {
 		OpOption = append(OpOption, clientv3.WithRange(endKey))
