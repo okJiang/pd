@@ -358,6 +358,7 @@ func (c *ResourceGroupsController) Start(ctx context.Context) {
 						if err = proto.Unmarshal(item.Kv.Value, group); err != nil {
 							continue
 						}
+						log.Info("[resource group controller] receive resource group meta change", zap.Any("group", group))
 						name := group.GetName()
 						gc, ok := c.loadGroupController(name)
 						if !ok {
