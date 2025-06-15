@@ -289,6 +289,12 @@ func (c *ResourceGroupsController) Start(ctx context.Context) {
 			case <-cleanupTicker.C:
 				c.cleanUpResourceGroup()
 			case <-stateUpdateTicker.C:
+				defaultGroup, ok := c.loadGroupController(defaultResourceGroupName)
+				if !ok {
+					log.Warn("[resource group controller][test] default resource group controller not found, skip state update")
+				} else {
+					log.Info("[resource group controller] default resource group state", zap.Any("defaultGroup", defaultGroup.getMeta()))
+				}
 				c.executeOnAllGroups((*groupCostController).updateRunState)
 				c.executeOnAllGroups((*groupCostController).updateAvgRequestResourcePerSec)
 				if len(c.run.currentRequests) == 0 {
@@ -358,7 +364,7 @@ func (c *ResourceGroupsController) Start(ctx context.Context) {
 						if err = proto.Unmarshal(item.Kv.Value, group); err != nil {
 							continue
 						}
-						log.Info("[resource group controller] receive resource group meta change", zap.Any("group", group))
+						log.Info("[resource group controller][test] receive resource group meta change", zap.Any("group", group))
 						name := group.GetName()
 						gc, ok := c.loadGroupController(name)
 						if !ok {
