@@ -179,8 +179,8 @@ type ResourceGroupsController struct {
 	wg sync.WaitGroup
 }
 
-// NewResourceGroupController returns a new ResourceGroupsController which impls ResourceGroupKVInterceptor
-func NewResourceGroupController(
+// NewResourceGroupsController returns a new ResourceGroupsController which impls ResourceGroupKVInterceptor
+func NewResourceGroupsController(
 	ctx context.Context,
 	clientUniqueID uint64,
 	provider ResourceGroupProvider,

@@ -128,7 +128,7 @@ func TestControllerWithTwoGroupRequestConcurrency(t *testing.T) {
 	}()
 
 	mockProvider := newMockResourceGroupProvider()
-	controller, err := NewResourceGroupController(ctx, 1, mockProvider, nil, constants.NullKeyspaceID)
+	controller, err := NewResourceGroupsController(ctx, 1, mockProvider, nil, constants.NullKeyspaceID)
 	re.NoError(err)
 	controller.Start(ctx)
 
@@ -234,7 +234,7 @@ func TestTryGetController(t *testing.T) {
 	defer cancel()
 
 	mockProvider := newMockResourceGroupProvider()
-	controller, err := NewResourceGroupController(ctx, 1, mockProvider, nil, constants.NullKeyspaceID)
+	controller, err := NewResourceGroupsController(ctx, 1, mockProvider, nil, constants.NullKeyspaceID)
 	re.NoError(err)
 	controller.Start(ctx)
 
@@ -323,7 +323,7 @@ func TestGetResourceGroup(t *testing.T) {
 
 	opts := []ResourceControlCreateOption{WithDegradedRUSettings(expectRUSettings)}
 
-	controller, err := NewResourceGroupController(ctx, 1, mockProvider, nil, constants.NullKeyspaceID, opts...)
+	controller, err := NewResourceGroupsController(ctx, 1, mockProvider, nil, constants.NullKeyspaceID, opts...)
 	re.NoError(err)
 	controller.Start(ctx)
 
@@ -362,7 +362,7 @@ func TestGetResourceGroup(t *testing.T) {
 		re.NoError(failpoint.Disable("github.com/tikv/pd/client/resource_group/controller/gerResourceGroupError"))
 	}()
 
-	controller02, err := NewResourceGroupController(ctx, 1, mockProvider, nil, constants.NullKeyspaceID)
+	controller02, err := NewResourceGroupsController(ctx, 1, mockProvider, nil, constants.NullKeyspaceID)
 	re.NoError(err)
 	controller02.Start(ctx)
 
@@ -378,7 +378,7 @@ func TestTokenBucketsRequestWithKeyspaceID(t *testing.T) {
 
 	checkKeyspace := func(keyspaceID uint32) {
 		mockProvider := newMockResourceGroupProvider()
-		controller, err := NewResourceGroupController(ctx, 1, mockProvider, nil, keyspaceID)
+		controller, err := NewResourceGroupsController(ctx, 1, mockProvider, nil, keyspaceID)
 		re.NoError(err)
 		controller.Start(ctx)
 

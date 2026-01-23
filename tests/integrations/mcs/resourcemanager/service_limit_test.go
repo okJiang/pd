@@ -81,7 +81,7 @@ func (suite *serviceLimitTestSuite) SetupTest() {
 		pd.SecurityOption{})
 	re.NoError(err)
 	waitLeaderServingClient(re, suite.client, suite.leader.GetAddr())
-	suite.controller, err = controller.NewResourceGroupController(suite.ctx, 1, suite.client, nil, suite.keyspaceID)
+	suite.controller, err = controller.NewResourceGroupsController(suite.ctx, 1, suite.client, nil, suite.keyspaceID)
 	re.NoError(err)
 	suite.controller.Start(suite.ctx)
 }
