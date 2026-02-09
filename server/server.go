@@ -236,6 +236,8 @@ type Server struct {
 	tsoPrimaryWatcher             *etcdutil.LoopWatcher
 	schedulingPrimaryWatcher      *etcdutil.LoopWatcher
 	resourceManagerPrimaryWatcher *etcdutil.LoopWatcher
+	resourceManagerManagerOnce    sync.Once
+	resourceManagerManager        *rm_server.Manager
 
 	// Cgroup Monitor
 	cgMonitor cgroup.Monitor
@@ -307,6 +309,10 @@ func CreateServer(ctx context.Context, cfg *config.Config, services []string, le
 	s.registry.RegisterService("MetaStorage", ms_server.NewService)
 	if runResourceManager {
 		s.registry.RegisterService("ResourceManager", rm_server.NewService[*Server])
+	} else {
+		// Initialize local resource manager manager early, so its start callbacks are registered
+		// before the server starts.
+		s.GetResourceManagerManager()
 	}
 	// Register the micro services REST path.
 	s.registry.InstallAllRESTHandler(s, etcdCfg.UserHandlers)
@@ -318,7 +324,10 @@ func CreateServer(ctx context.Context, cfg *config.Config, services []string, le
 		diagnosticspb.RegisterDiagnosticsServer(gs, s)
 		if !runResourceManager {
 			// resource manager proxy
-			resource_manager.RegisterResourceManagerServer(gs, &resourceGroupProxyServer{GrpcServer: grpcServer})
+			resource_manager.RegisterResourceManagerServer(gs, &resourceGroupProxyServer{
+				GrpcServer: grpcServer,
+				manager:    s.GetResourceManagerManager(),
+			})
 		}
 		// Register the micro services GRPC service.
 		s.registry.InstallAllGRPCServices(s, gs)
@@ -1413,6 +1422,19 @@ func (s *Server) GetTLSConfig() *grpcutil.TLSConfig {
 // GetControllerConfig gets the resource manager controller config.
 func (s *Server) GetControllerConfig() *rm_server.ControllerConfig {
 	return &s.cfg.Controller
+}
+
+// GetResourceGroupWriteRole returns the manager write role for PD local resource manager metadata APIs.
+func (*Server) GetResourceGroupWriteRole() rm_server.ResourceGroupWriteRole {
+	return rm_server.ResourceGroupWriteRolePDMetaOnly
+}
+
+// GetResourceManagerManager returns the singleton local manager used by PD to handle RM metadata writes.
+func (s *Server) GetResourceManagerManager() *rm_server.Manager {
+	s.resourceManagerManagerOnce.Do(func() {
+		s.resourceManagerManager = rm_server.NewManager[*Server](s)
+	})
+	return s.resourceManagerManager
 }
 
 // GetRaftCluster gets Raft cluster.

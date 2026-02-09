@@ -22,6 +22,8 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/failpoint"
@@ -133,6 +135,9 @@ func (s *Service) AddResourceGroup(_ context.Context, req *rmpb.PutResourceGroup
 	if err := s.checkServing(); err != nil {
 		return nil, err
 	}
+	if !s.manager.GetWriteRole().AllowsMetadataWrite() {
+		return nil, status.Error(codes.FailedPrecondition, "resource group metadata writes must be handled by PD")
+	}
 	err := s.manager.AddResourceGroup(req.GetGroup())
 	if err != nil {
 		return nil, err
@@ -145,6 +150,9 @@ func (s *Service) DeleteResourceGroup(_ context.Context, req *rmpb.DeleteResourc
 	if err := s.checkServing(); err != nil {
 		return nil, err
 	}
+	if !s.manager.GetWriteRole().AllowsMetadataWrite() {
+		return nil, status.Error(codes.FailedPrecondition, "resource group metadata writes must be handled by PD")
+	}
 	err := s.manager.DeleteResourceGroup(ExtractKeyspaceID(req.GetKeyspaceId()), req.ResourceGroupName)
 	if err != nil {
 		return nil, err
@@ -156,6 +164,9 @@ func (s *Service) DeleteResourceGroup(_ context.Context, req *rmpb.DeleteResourc
 func (s *Service) ModifyResourceGroup(_ context.Context, req *rmpb.PutResourceGroupRequest) (*rmpb.PutResourceGroupResponse, error) {
 	if err := s.checkServing(); err != nil {
 		return nil, err
+	}
+	if !s.manager.GetWriteRole().AllowsMetadataWrite() {
+		return nil, status.Error(codes.FailedPrecondition, "resource group metadata writes must be handled by PD")
 	}
 	err := s.manager.ModifyResourceGroup(req.GetGroup())
 	if err != nil {
