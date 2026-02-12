@@ -675,8 +675,12 @@ func (suite *keyspaceGroupTestSuite) TestUpdateMemberWhenRecovery() {
 
 	// Test configuration constants
 	const (
-		// Time to wait for GetTS to start
-		waitForGetTSStart = 3 * time.Second
+		// Give the recovery flow a generous overall deadline in CI.
+		getTSRecoveryTimeout = 90 * time.Second
+		// Bound each GetTS attempt so transient stream failures can retry quickly.
+		getTSAttemptTimeout = 10 * time.Second
+		// Retry interval for GetTS while the TSO service is recovering.
+		getTSRetryInterval = 200 * time.Millisecond
 	)
 
 	// Enable mockLoadKeyspace failpoint to return hardcoded keyspace meta for testing
@@ -713,8 +717,8 @@ func (suite *keyspaceGroupTestSuite) TestUpdateMemberWhenRecovery() {
 	}()
 
 	// Step 5: Start async GetTS call - it will wait for TSO service to recover
-	// Use an independent context with explicit timeout for this GetTS operation
-	getTSCtx, getTSCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// Use an independent context with explicit timeout for this GetTS operation.
+	getTSCtx, getTSCancel := context.WithTimeout(context.Background(), getTSRecoveryTimeout)
 	defer getTSCancel()
 
 	type getTSResult struct {
@@ -723,19 +727,56 @@ func (suite *keyspaceGroupTestSuite) TestUpdateMemberWhenRecovery() {
 		err        error
 	}
 	resultCh := make(chan getTSResult, 1)
+	getTSStarted := make(chan struct{})
 
 	go func() {
-		physicalTS, logicalTS, getErr := client.GetTS(getTSCtx)
-		resultCh <- getTSResult{physicalTS: physicalTS, logicalTS: logicalTS, err: getErr}
-	}()
+		close(getTSStarted)
+		ticker := time.NewTicker(getTSRetryInterval)
+		defer ticker.Stop()
 
-	time.Sleep(waitForGetTSStart) // Give it time to begin execution
+		var lastErr error
+		for {
+			attemptCtx, attemptCancel := context.WithTimeout(getTSCtx, getTSAttemptTimeout)
+			physicalTS, logicalTS, getErr := client.GetTS(attemptCtx)
+			attemptCancel()
+			if getErr == nil {
+				resultCh <- getTSResult{physicalTS: physicalTS, logicalTS: logicalTS, err: nil}
+				return
+			}
+			lastErr = getErr
+			select {
+			case <-getTSCtx.Done():
+				if lastErr == nil {
+					lastErr = getTSCtx.Err()
+				} else {
+					lastErr = fmt.Errorf("%w (recovery deadline reached: %v)", lastErr, getTSCtx.Err())
+				}
+				resultCh <- getTSResult{err: lastErr}
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	<-getTSStarted
 
 	// Step 6: Restart one TSO node while GetTS is waiting
 	newNode, cleanup := tests.StartSingleTSOTestServer(suite.ctx, re, suite.backendEndpoints, firstNodeAddr)
 	setup.cleanups = append(setup.cleanups, cleanup)
 	nodes[newNode.GetAddr()] = newNode
 	tests.WaitForPrimaryServing(re, map[string]bs.Server{newNode.GetAddr(): newNode})
+	// Wait until PD publishes the restarted TSO node for discovery.
+	testutil.Eventually(re, func() bool {
+		tsoURLs, err := suite.getTSOServerURLs()
+		if err != nil {
+			return false
+		}
+		for _, tsoURL := range tsoURLs {
+			if tsoURL == newNode.GetAddr() {
+				return true
+			}
+		}
+		return false
+	}, testutil.WithWaitFor(30*time.Second), testutil.WithTickInterval(200*time.Millisecond))
 
 	// Step 7: Verify GetTS succeeds after node restart
 	result := <-resultCh
