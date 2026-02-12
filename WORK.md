@@ -6,8 +6,8 @@
 - 微服务模式：RM 侧通过 watcher 获取最新 metadata，读请求可读本地 cache（或按设计转发），写请求不上 RM。
 - 拆分策略：先做“默认行为不变”的基础重构，再切流 HTTP/gRPC/client，最后补 watcher 一致性与故障矩阵。
 - PR 粒度：每个 PR 控制在 `<= 500` 行（目标 `200~480`），超预算继续拆。
-- 当前进展（2026-02-11）：
-  - PR1 已提交并等待 review：<https://github.com/tikv/pd/pull/10227>
+- 当前进展（2026-02-12）：
+  - PR1 已完成合并：<https://github.com/tikv/pd/pull/10227>
   - PR2 已提交并等待 review（与 PR1 无依赖，可并行评审）：<https://github.com/tikv/pd/pull/10234>
 
 ---
@@ -95,7 +95,7 @@
 
 ## PR1（<=350）
 **Title**: `rm: introduce manager write roles and gates`
-- 状态：Open（<https://github.com/tikv/pd/pull/10227>）
+- 状态：Merged（2026-02-12，<https://github.com/tikv/pd/pull/10227>）
 - 提出：引入 `LegacyAll / PDMetaOnly / RMTokenOnly` gate，默认 `LegacyAll`。
 - fix comments：重点验证 mode gate 与默认行为不变。
 - merge：gate 单测通过，默认路径无回归。
