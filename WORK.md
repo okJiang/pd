@@ -6,9 +6,11 @@
 - 微服务模式：RM 侧通过 watcher 获取最新 metadata，读请求可读本地 cache（或按设计转发），写请求不上 RM。
 - 拆分策略：先做“默认行为不变”的基础重构，再切流 HTTP/gRPC/client，最后补 watcher 一致性与故障矩阵。
 - PR 粒度：每个 PR 控制在 `<= 500` 行（目标 `200~480`），超预算继续拆。
-- 当前进展（2026-02-12）：
+- 当前进展（2026-02-13）：
   - PR1 已完成合并：<https://github.com/tikv/pd/pull/10227>
   - PR2 已提交并等待 review（与 PR1 无依赖，可并行评审）：<https://github.com/tikv/pd/pull/10234>
+  - PR3 已提交并等待 review：<https://github.com/tikv/pd/pull/10246>
+  - PR3 已修复 statics CI 报错（本地 `make static` 已通过），等待 checks 全绿。
 
 ---
 
@@ -109,6 +111,7 @@
 
 ## PR3（<=450）
 **Title**: `rm: add PD metadata HTTP handler (standalone)`
+- 状态：Open（<https://github.com/tikv/pd/pull/10246>）
 - 提出：新增 PD 专用 handler，不依赖 `*rmserver.Server` 强转。
 - fix comments：重点验证 keyspace 场景、错误码、panic 风险。
 - merge：`/config/**` CRUD/controller/service-limit 单测通过。
