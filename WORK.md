@@ -54,7 +54,7 @@
 ### 2.3 gRPC 与 client 路由
 - gRPC：Add/Modify/Delete 写在 PD proxy 本地处理；RM 写接口返回 `FailedPrecondition`。
 - gRPC 读：Get/List 保留。
-- client：CRUD/Get/List 固定 PD 连接；token 流继续 RM discovery。
+- client：写 RPC（Add/Modify/Delete）固定 PD；读/Token（Get/List/AcquireTokenBuckets）优先 RM discovery，缺失时回退 PD。
 
 ### 2.4 watcher 一致性
 - 启动阶段要求“同 revision 载入 + 追平后再服务”。
@@ -125,9 +125,9 @@
 ## PR5（<=420）
 **Title**: `client: split metadata and token connections`
 - 状态：Open（<https://github.com/tikv/pd/pull/10255>）
-- 提出：client 的 CRUD/Get/List 固定走 PD，AcquireTokenBuckets 继续走 RM。
-- fix comments：重点验证微服务下 client 不再向 RM 发写 RPC。
-- merge：client 路由测试通过，token path 无回归。
+- 提出：client 的写 RPC（Add/Modify/Delete）固定走 PD；读/Token（Get/List/AcquireTokenBuckets）优先走 RM discovery。
+- fix comments：重点验证“写走 PD，读+token 走 RM discovery”的分流语义。
+- merge：client 路由测试通过，token path 无回归，读路径保持 RM 运行态可见性。
 
 ## PR6（<=480）
 **Title**: `rm: add metadata watcher v1 with revision-safe startup`
@@ -151,7 +151,7 @@
 ### 5.2 渐进行为变更
 - 微服务模式下 RM 写 RPC 返回 `FailedPrecondition`。
 - metadata 写统一由 PD 生效。
-- client CRUD/Get/List 固定 PD；token 仍走 RM。
+- client 写 RPC 固定 PD；读+token 仍走 RM discovery（无 RM 时回退 PD）。
 
 ---
 
