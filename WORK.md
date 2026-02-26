@@ -6,11 +6,11 @@
 - 微服务模式：RM 侧通过 watcher 获取最新 metadata，读请求可读本地 cache（或按设计转发），写请求不上 RM。
 - 拆分策略：先做“默认行为不变”的基础重构，再切流 HTTP/gRPC/client，最后补 watcher 一致性与故障矩阵。
 - PR 粒度：每个 PR 控制在 `<= 500` 行（目标 `200~480`），超预算继续拆。
-- 当前进展（2026-02-13）：
+- 当前进展（2026-02-26）：
   - PR1 已完成合并：<https://github.com/tikv/pd/pull/10227>
   - PR2 已提交并等待 review（与 PR1 无依赖，可并行评审）：<https://github.com/tikv/pd/pull/10234>
-  - PR3 已提交并等待 review：<https://github.com/tikv/pd/pull/10246>
-  - PR3 已修复 statics CI 报错（本地 `make static` 已通过），等待 checks 全绿。
+  - PR3（含 former PR4）已提交并等待 review：<https://github.com/tikv/pd/pull/10246>
+  - PR5（former PR6，client 拆分）已提交并等待 review：<https://github.com/tikv/pd/pull/10255>
 
 ---
 
@@ -110,37 +110,32 @@
 - merge：`Modify metadata -> tokens unchanged` 强断言通过。
 
 ## PR3（<=450）
-**Title**: `rm: add PD metadata HTTP handler (standalone)`
+**Title**: `rm: add PD metadata handler with redirector local routing`
 - 状态：Open（<https://github.com/tikv/pd/pull/10246>）
-- 提出：新增 PD 专用 handler，不依赖 `*rmserver.Server` 强转。
-- fix comments：重点验证 keyspace 场景、错误码、panic 风险。
-- merge：`/config/**` CRUD/controller/service-limit 单测通过。
+- 提出：新增 PD 专用 handler，并在 redirector 内本地处理 metadata config 路由。
+- fix comments：重点验证 keyspace 场景、错误码、路径兼容与 panic 风险。
+- merge：metadata `/config/**` 路由端到端可测，非 metadata 路由保持转发语义。
 
 ## PR4（<=420）
-**Title**: `rm: keep redirector.NewHandler and route config writes locally`
-- 提出：保留 `redirector.NewHandler`，内部改兼容入口 + 本地 metadata 写 + 控制面转发。
-- fix comments：重点验证路径注册冲突与兼容入口行为。
-- merge：`/resource-manager/api/v1/` 单路径注册；`/config` 写在 PD 生效；`/admin` `/primary` 仍转发。
-
-## PR5（<=420）
 **Title**: `rm: move gRPC writes to PD proxy, keep RM reads/tokens`
 - 提出：PD proxy 处理 Add/Modify/Delete；RM 写返回 `FailedPrecondition`；保留 Get/List。
 - fix comments：重点验证“只禁写，不禁读”。
 - merge：写路径全走 PD；RM Get/List 与现有集成行为一致。
 
-## PR6（<=380）
+## PR5（<=420）
 **Title**: `client: split metadata and token connections`
+- 状态：Open（<https://github.com/tikv/pd/pull/10255>）
 - 提出：client 的 CRUD/Get/List 固定走 PD，AcquireTokenBuckets 继续走 RM。
 - fix comments：重点验证微服务下 client 不再向 RM 发写 RPC。
 - merge：client 路由测试通过，token path 无回归。
 
-## PR7（<=480）
+## PR6（<=480）
 **Title**: `rm: add metadata watcher v1 with revision-safe startup`
 - 提出：settings + states watcher，保证同 revision 载入并追平后再服务。
 - fix comments：重点修复 WaitLoad 窗口不一致风险。
 - merge：启动一致性与最终一致性测试通过。
 
-## PR8（<=480）
+## PR7（<=480）
 **Title**: `rm: watcher v2 for controller/service-limit + precedence + failures`
 - 提出：补 controller/service-limit watch、legacy/keyspace precedence、故障矩阵。
 - fix comments：重点验证 compaction 与 leader/primary 切换恢复。
@@ -169,10 +164,10 @@
 - watcher state machine 与 revision-safe startup。
 
 ### 6.2 集成测试分配
-- PR4/PR5：HTTP/gRPC 路由切流与兼容验证。
-- PR7/PR8：watcher 一致性与故障恢复验证。
+- PR4/PR5：gRPC 路由切流与 client 路由验证。
+- PR6/PR7：watcher 一致性与故障恢复验证。
 
-### 6.3 必测故障场景（PR8 收口）
+### 6.3 必测故障场景（PR7 收口）
 - PD leader 切换期间写入语义稳定。
 - RM primary 切换期间 watcher 连续。
 - etcd compaction 后 watcher 重建恢复。
