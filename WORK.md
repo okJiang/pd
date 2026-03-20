@@ -6,11 +6,14 @@
 - 微服务模式：RM 侧通过 watcher 获取最新 metadata，读请求可读本地 cache（或按设计转发），写请求不上 RM。
 - 拆分策略：先做“默认行为不变”的基础重构，再切流 HTTP/gRPC/client，最后补 watcher 一致性与故障矩阵。
 - PR 粒度：每个 PR 控制在 `<= 500` 行（目标 `200~480`），超预算继续拆。
-- 当前进展（2026-02-26）：
+- 当前进展（2026-03-20）：
   - PR1 已完成合并：<https://github.com/tikv/pd/pull/10227>
-  - PR2 已提交并等待 review（与 PR1 无依赖，可并行评审）：<https://github.com/tikv/pd/pull/10234>
-  - PR3（含 former PR4）已提交并等待 review：<https://github.com/tikv/pd/pull/10246>
-  - PR5（former PR6，client 拆分）已提交并等待 review：<https://github.com/tikv/pd/pull/10255>
+  - PR2 已完成合并：<https://github.com/tikv/pd/pull/10234>
+  - PR3（含 former PR4）已完成合并：<https://github.com/tikv/pd/pull/10246>
+  - PR5（former PR6，client 拆分）已完成合并：<https://github.com/tikv/pd/pull/10255>
+  - PR6（watcher v1 scaffold）已完成合并：<https://github.com/tikv/pd/pull/10259>
+  - PR4（metadata writes -> PD）当前是 draft PR，待在 `master` 上 rebase 并清理冲突：<https://github.com/tikv/pd/pull/10260>
+  - `POST /resource-manager/api/v1/config/controller` 的 all-or-nothing follow-up 已从 PR3 review 拆出单独 issue：<https://github.com/tikv/pd/issues/10335>
 
 ---
 
@@ -104,33 +107,36 @@
 
 ## PR2（<=300）
 **Title**: `rm: add settings-only apply path`
-- 状态：Open（<https://github.com/tikv/pd/pull/10234>，独立于 PR1）
+- 状态：Merged（2026-02-13，<https://github.com/tikv/pd/pull/10234>，独立于 PR1）
 - 提出：新增 settings-only apply，绕开 token delta patch 语义。
 - fix comments：重点验证 metadata 更新不改 tokens。
 - merge：`Modify metadata -> tokens unchanged` 强断言通过。
 
 ## PR3（<=450）
 **Title**: `rm: add PD metadata handler with redirector local routing`
-- 状态：Open（<https://github.com/tikv/pd/pull/10246>）
+- 状态：Merged（2026-03-16，<https://github.com/tikv/pd/pull/10246>）
 - 提出：新增 PD 专用 handler，并在 redirector 内本地处理 metadata config 路由。
 - fix comments：重点验证 keyspace 场景、错误码、路径兼容与 panic 风险。
 - merge：metadata `/config/**` 路由端到端可测，非 metadata 路由保持转发语义。
+- follow-up：controller config API 的 all-or-nothing 语义问题拆分为独立 issue：<https://github.com/tikv/pd/issues/10335>
 
 ## PR4（<=420）
 **Title**: `rm: move gRPC writes to PD proxy, keep RM reads/tokens`
+- 状态：Draft（<https://github.com/tikv/pd/pull/10260>，当前 `DIRTY`，待基于 `master`/PR6 rebase）
 - 提出：PD proxy 处理 Add/Modify/Delete；RM 写返回 `FailedPrecondition`；保留 Get/List。
 - fix comments：重点验证“只禁写，不禁读”。
 - merge：写路径全走 PD；RM Get/List 与现有集成行为一致。
 
 ## PR5（<=420）
 **Title**: `client: split metadata and token connections`
-- 状态：Open（<https://github.com/tikv/pd/pull/10255>）
+- 状态：Merged（2026-02-28，<https://github.com/tikv/pd/pull/10255>）
 - 提出：client 的写 RPC（Add/Modify/Delete）固定走 PD；读/Token（Get/List/AcquireTokenBuckets）优先走 RM discovery。
 - fix comments：重点验证“写走 PD，读+token 走 RM discovery”的分流语义。
 - merge：client 路由测试通过，token path 无回归，读路径保持 RM 运行态可见性。
 
 ## PR6（<=480）
 **Title**: `rm: add metadata watcher v1 with revision-safe startup`
+- 状态：Merged（2026-03-19，<https://github.com/tikv/pd/pull/10259>）
 - 提出：settings + states watcher，保证同 revision 载入并追平后再服务。
 - fix comments：重点修复 WaitLoad 窗口不一致风险。
 - merge：启动一致性与最终一致性测试通过。
@@ -172,6 +178,10 @@
 - RM primary 切换期间 watcher 连续。
 - etcd compaction 后 watcher 重建恢复。
 - RM 不可用时 PD metadata 写行为与错误语义稳定。
+
+### 6.4 当前收尾项（2026-03-20）
+- `#10260`：在 `#10259` 已合并后，重新基于 `master` 整理 stacked history，只保留 “route metadata writes via PD” 这一层行为变更。
+- `#10335`：单独修复 controller config 更新的 API 级 all-or-nothing 语义，不阻塞 `#10260` 的 rebase。
 
 ---
 
