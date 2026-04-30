@@ -118,6 +118,53 @@ func TestLeadership(t *testing.T) {
 	re.NoError(lease2.Close())
 }
 
+func TestDeleteLeaderKeyDoesNotDeleteChangedLeader(t *testing.T) {
+	re := require.New(t)
+	_, client, clean := etcdutil.NewTestEtcdCluster(t, 1, nil)
+	defer clean()
+
+	leaderKey := "/test_leader"
+	leadership1 := NewLeadership(client, leaderKey, "test_leader_1")
+	leadership2 := NewLeadership(client, leaderKey, "test_leader_2")
+
+	err := leadership1.Campaign(defaultLeaseTimeout, "test_leader_1")
+	re.NoError(err)
+	resp, err := client.Get(context.Background(), leaderKey)
+	re.NoError(err)
+	re.Len(resp.Kvs, 1)
+	oldRevision := resp.Kvs[0].ModRevision
+
+	_, err = client.Delete(context.Background(), leaderKey)
+	re.NoError(err)
+	err = leadership2.Campaign(defaultLeaseTimeout, "test_leader_2")
+	re.NoError(err)
+
+	err = leadership1.DeleteLeaderKeyByRevision(oldRevision)
+	re.Error(err)
+	resp, err = client.Get(context.Background(), leaderKey)
+	re.NoError(err)
+	re.Len(resp.Kvs, 1)
+	re.Equal("test_leader_2", string(resp.Kvs[0].Value))
+
+	err = leadership1.DeleteLeaderKey()
+	re.Error(err)
+	resp, err = client.Get(context.Background(), leaderKey)
+	re.NoError(err)
+	re.Len(resp.Kvs, 1)
+	re.Equal("test_leader_2", string(resp.Kvs[0].Value))
+
+	resp, err = client.Get(context.Background(), leaderKey)
+	re.NoError(err)
+	err = leadership2.DeleteLeaderKeyByRevision(resp.Kvs[0].ModRevision)
+	re.NoError(err)
+	resp, err = client.Get(context.Background(), leaderKey)
+	re.NoError(err)
+	re.Empty(resp.Kvs)
+
+	err = leadership2.DeleteLeaderKeyByRevision(resp.Header.Revision)
+	re.NoError(err)
+}
+
 func TestExitWatch(t *testing.T) {
 	re := require.New(t)
 	leaderKey := "/test_leader"
