@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/pingcap/kvproto/pkg/metapb"
 	"github.com/pingcap/kvproto/pkg/pdpb"
 
 	"github.com/tikv/pd/pkg/core"
@@ -331,6 +332,116 @@ func TestSyncExitsWhenContextCanceledBeforeRequest(t *testing.T) {
 		st, ok := status.FromError(syncErr)
 		return ok && st.Code() == codes.Unavailable
 	})
+}
+
+func TestSyncFallsBackToFullSyncWhenHistoryMissing(t *testing.T) {
+	re := require.New(t)
+	tempDir := t.TempDir()
+	regionStorage, err := storage.NewRegionStorageWithLevelDBBackend(context.Background(), tempDir, nil)
+	re.NoError(err)
+	defer func() {
+		re.NoError(regionStorage.Close())
+	}()
+
+	bc := core.NewBasicCluster()
+	region := core.NewRegionInfo(&metapb.Region{
+		Id:          1,
+		RegionEpoch: &metapb.RegionEpoch{ConfVer: 1, Version: 1},
+		Peers:       []*metapb.Peer{{Id: 11, StoreId: 1}},
+	}, &metapb.Peer{Id: 11, StoreId: 1})
+	bc.PutRegion(region)
+	server := mockserver.NewMockServer(
+		context.Background(),
+		nil,
+		nil,
+		storage.NewCoreStorage(storage.NewStorageWithMemoryBackend(), regionStorage),
+		bc,
+	)
+	syncer := NewRegionSyncer(server)
+	syncer.history.resetWithIndex(100)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := newMockSyncRegionsServer()
+	done := make(chan error, 1)
+	go func() {
+		done <- syncer.Sync(ctx, stream)
+	}()
+
+	stream.recvCh <- &pdpb.SyncRegionRequest{
+		Header:     &pdpb.RequestHeader{ClusterId: keypath.ClusterID()},
+		StartIndex: 1,
+		Member: &pdpb.Member{
+			Name:       "pd-follower",
+			ClientUrls: []string{"http://127.0.0.1:2379"},
+		},
+	}
+	var resp *pdpb.SyncRegionResponse
+	select {
+	case resp = <-stream.sendCh:
+	case <-time.After(3 * time.Second):
+		re.FailNow("expected full sync response")
+	}
+	re.Equal(uint64(0), resp.GetStartIndex())
+	re.Len(resp.GetRegions(), 1)
+	re.Equal(uint64(1), resp.GetRegions()[0].GetId())
+	select {
+	case resp = <-stream.sendCh:
+	case <-time.After(3 * time.Second):
+		re.FailNow("expected full sync completion response")
+	}
+	re.Equal(uint64(1), resp.GetStartIndex())
+	re.Empty(resp.GetRegions())
+
+	cancel()
+	var syncErr error
+	testutil.Eventually(re, func() bool {
+		if syncErr == nil {
+			select {
+			case syncErr = <-done:
+			default:
+				return false
+			}
+		}
+		st, ok := status.FromError(syncErr)
+		return ok && st.Code() == codes.Unavailable
+	})
+}
+
+func TestClientWaitsForFullSyncCompletionBeforeRunning(t *testing.T) {
+	re := require.New(t)
+	regionStorage := storage.NewStorageWithMemoryBackend()
+	server := mockserver.NewMockServer(
+		context.Background(),
+		nil,
+		nil,
+		regionStorage,
+		core.NewBasicCluster(),
+	)
+	syncer := NewRegionSyncer(server)
+	bc := core.NewBasicCluster()
+	fullSyncing := false
+	region := &metapb.Region{
+		Id:          1,
+		StartKey:    []byte{1},
+		EndKey:      []byte{2},
+		RegionEpoch: &metapb.RegionEpoch{ConfVer: 1, Version: 1},
+		Peers:       []*metapb.Peer{{Id: 11, StoreId: 1}},
+	}
+
+	syncer.handleRegionSyncResponse(context.Background(), &pdpb.SyncRegionResponse{
+		Header:     &pdpb.ResponseHeader{ClusterId: keypath.ClusterID()},
+		Regions:    []*metapb.Region{region},
+		StartIndex: 0,
+	}, bc, regionStorage, &fullSyncing)
+	re.True(fullSyncing)
+	re.False(syncer.IsRunning())
+
+	syncer.handleRegionSyncResponse(context.Background(), &pdpb.SyncRegionResponse{
+		Header:     &pdpb.ResponseHeader{ClusterId: keypath.ClusterID()},
+		StartIndex: 1,
+	}, bc, regionStorage, &fullSyncing)
+	re.False(fullSyncing)
+	re.True(syncer.IsRunning())
 }
 
 type mockSyncRegionsServer struct {

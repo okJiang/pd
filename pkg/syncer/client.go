@@ -65,6 +65,11 @@ func (s *RegionSyncer) reset() {
 	s.mu.clientCancel, s.mu.clientCtx = nil, nil
 }
 
+// ResetHistoryIndex resets and persists the next region sync history index.
+func (s *RegionSyncer) ResetHistoryIndex(index uint64) {
+	s.history.resetWithIndexAndPersist(index)
+}
+
 func (s *RegionSyncer) syncRegion(ctx context.Context, conn *grpc.ClientConn) (ClientStream, error) {
 	cli := pdpb.NewPDClient(conn)
 	syncStream, err := cli.SyncRegions(ctx)
@@ -85,7 +90,7 @@ func (s *RegionSyncer) syncRegion(ctx context.Context, conn *grpc.ClientConn) (C
 
 var regionGuide = core.GenerateRegionGuideFunc(false)
 
-func (s *RegionSyncer) handleRegionSyncResponse(ctx context.Context, resp *pdpb.SyncRegionResponse, bc *core.BasicCluster, regionStorage storage.Storage) {
+func (s *RegionSyncer) handleRegionSyncResponse(ctx context.Context, resp *pdpb.SyncRegionResponse, bc *core.BasicCluster, regionStorage storage.Storage, fullSyncing *bool) {
 	if s.history.getNextIndex() != resp.GetStartIndex() {
 		log.Warn("server sync index not match the leader",
 			zap.String("server", s.server.Name()),
@@ -99,6 +104,9 @@ func (s *RegionSyncer) handleRegionSyncResponse(ctx context.Context, resp *pdpb.
 	regions := resp.GetRegions()
 	buckets := resp.GetBuckets()
 	regionLeaders := resp.GetRegionLeaders()
+	if !s.IsRunning() && resp.GetStartIndex() == 0 && len(regions) > 0 {
+		*fullSyncing = true
+	}
 	hasStats := len(stats) == len(regions)
 	hasBuckets := len(buckets) == len(regions)
 	for i, r := range regions {
@@ -145,6 +153,13 @@ func (s *RegionSyncer) handleRegionSyncResponse(ctx context.Context, resp *pdpb.
 		for _, old := range overlaps {
 			_ = regionStorage.DeleteRegion(old.GetMeta())
 		}
+	}
+	if *fullSyncing {
+		if len(regions) == 0 {
+			*fullSyncing = false
+			s.streamingRunning.Store(true)
+		}
+		return
 	}
 	// mark the client as running status when it finished the first history region sync.
 	s.streamingRunning.Store(true)
@@ -233,6 +248,7 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 				continue
 			}
 			log.Info("server starts to synchronize with leader", zap.String("server", s.server.Name()), zap.String("leader", s.server.GetLeader().GetName()), zap.Uint64("request-index", s.history.getNextIndex()))
+			fullSyncing := false
 			for {
 				resp, err := stream.Recv()
 				if err == io.EOF {
@@ -260,7 +276,7 @@ func (s *RegionSyncer) StartSyncWithLeader(addr string) {
 					}
 					break
 				}
-				s.handleRegionSyncResponse(ctx, resp, bc, regionStorage)
+				s.handleRegionSyncResponse(ctx, resp, bc, regionStorage, &fullSyncing)
 			}
 		}
 	}()

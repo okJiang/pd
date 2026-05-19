@@ -122,10 +122,21 @@ func (h *historyBuffer) recordsFrom(index uint64) []*core.RegionInfo {
 func (h *historyBuffer) resetWithIndex(index uint64) {
 	h.Lock()
 	defer h.Unlock()
+	h.resetWithIndexLocked(index)
+}
+
+func (h *historyBuffer) resetWithIndexLocked(index uint64) {
 	h.index = index
 	h.head = 0
 	h.tail = 0
 	h.flushCount = defaultFlushCount
+}
+
+func (h *historyBuffer) resetWithIndexAndPersist(index uint64) {
+	h.Lock()
+	defer h.Unlock()
+	h.resetWithIndexLocked(index)
+	h.persist()
 }
 
 func (h *historyBuffer) getNextIndex() uint64 {

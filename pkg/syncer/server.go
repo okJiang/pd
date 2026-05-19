@@ -287,6 +287,9 @@ func recvSyncRegionRequest(ctx context.Context, stream pdpb.PD_SyncRegionsServer
 func (s *RegionSyncer) syncHistoryRegion(ctx context.Context, request *pdpb.SyncRegionRequest, stream pdpb.PD_SyncRegionsServer) error {
 	startIndex := request.GetStartIndex()
 	name := request.GetMember().GetName()
+	if startIndex == 0 {
+		return s.syncFullRegions(ctx, name, stream)
+	}
 	records := s.history.recordsFrom(startIndex)
 	if len(records) == 0 {
 		if s.history.getNextIndex() == startIndex {
@@ -303,12 +306,8 @@ func (s *RegionSyncer) syncHistoryRegion(ctx context.Context, request *pdpb.Sync
 			}
 			return stream.Send(resp)
 		}
-		// do full synchronization
-		if startIndex == 0 {
-			return s.syncFullRegions(ctx, name, stream)
-		}
-		log.Warn("no history regions from index, the leader may be restarted", zap.Uint64("index", startIndex))
-		return nil
+		log.Warn("no history regions from index, fall back to full sync", zap.Uint64("index", startIndex))
+		return s.syncFullRegions(ctx, name, stream)
 	}
 	log.Info("sync the history regions with server",
 		zap.String("server", name),
@@ -350,8 +349,17 @@ func (*RegionSyncer) syncHistoryRecords(startIndex uint64, records []*core.Regio
 
 func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream pdpb.PD_SyncRegionsServer) error {
 	regions := s.server.GetRegions()
-	lastIndex := 0
 	start := time.Now()
+	if len(regions) == 0 {
+		resp := &pdpb.SyncRegionResponse{
+			Header:     &pdpb.ResponseHeader{ClusterId: keypath.ClusterID()},
+			StartIndex: 0,
+		}
+		log.Info("requested server has completed full synchronization with server",
+			zap.String("requested-server", name), zap.String("server", s.server.Name()), zap.Duration("cost", time.Since(start)))
+		return stream.Send(resp)
+	}
+	lastIndex := 0
 	metas := make([]*metapb.Region, 0, maxSyncRegionBatchSize)
 	stats := make([]*pdpb.RegionStat, 0, maxSyncRegionBatchSize)
 	leaders := make([]*metapb.Peer, 0, maxSyncRegionBatchSize)
@@ -406,6 +414,14 @@ func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream 
 	}
 	log.Info("requested server has completed full synchronization with server",
 		zap.String("requested-server", name), zap.String("server", s.server.Name()), zap.Duration("cost", time.Since(start)))
+	resp := &pdpb.SyncRegionResponse{
+		Header:     &pdpb.ResponseHeader{ClusterId: keypath.ClusterID()},
+		StartIndex: uint64(lastIndex),
+	}
+	if err := stream.Send(resp); err != nil {
+		log.Warn("failed to send sync region completion response", errs.ZapError(errs.ErrGRPCSend, err))
+		return err
+	}
 	return nil
 }
 
