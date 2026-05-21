@@ -359,7 +359,7 @@ func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream 
 			StartIndex: 0,
 		}
 		if err := stream.Send(resp); err != nil {
-			log.Error("failed to send sync region response", errs.ZapError(errs.ErrGRPCSend, err))
+			log.Warn("failed to send sync region response", errs.ZapError(errs.ErrGRPCSend, err))
 			return nil, err
 		}
 	}
