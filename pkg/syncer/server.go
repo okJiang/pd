@@ -350,9 +350,29 @@ func (*RegionSyncer) syncHistoryRecords(startIndex uint64, records []*core.Regio
 }
 
 func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream pdpb.PD_SyncRegionsServer) (*regionSyncStream, error) {
+	for {
+		start := time.Now()
+		catchUpIndex, canceled, err := s.sendFullRegionSnapshot(ctx, stream)
+		if err != nil {
+			return nil, err
+		}
+		if canceled {
+			return nil, nil
+		}
+		catchUpIndex, restart, err := s.catchUpFullSyncHistory(name, catchUpIndex, stream)
+		if err != nil {
+			return nil, err
+		}
+		if restart {
+			continue
+		}
+		return s.completeFullSyncAndBindStream(name, stream, catchUpIndex, start)
+	}
+}
+
+func (s *RegionSyncer) sendFullRegionSnapshot(ctx context.Context, stream pdpb.PD_SyncRegionsServer) (uint64, bool, error) {
 	catchUpIndex := s.history.getNextIndex()
 	regions := s.server.GetRegions()
-	start := time.Now()
 	if len(regions) == 0 {
 		resp := &pdpb.SyncRegionResponse{
 			Header:     &pdpb.ResponseHeader{ClusterId: keypath.ClusterID()},
@@ -360,7 +380,7 @@ func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream 
 		}
 		if err := stream.Send(resp); err != nil {
 			log.Warn("failed to send sync region response", errs.ZapError(errs.ErrGRPCSend, err))
-			return nil, err
+			return 0, false, err
 		}
 	}
 	lastIndex := 0
@@ -375,7 +395,7 @@ func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream 
 			failpoint.Inject("noFastExitSync", func() {
 				failpoint.Goto("doSync")
 			})
-			return nil, nil
+			return 0, true, nil
 		default:
 		}
 		failpoint.Label("doSync")
@@ -404,18 +424,26 @@ func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream 
 		}
 		if err := s.limit.WaitN(ctx, resp.Size()); err != nil {
 			log.Error("failed to wait rate limit", errs.ZapError(err))
-			return nil, err
+			return 0, false, err
 		}
 		lastIndex += len(metas)
 		if err := stream.Send(resp); err != nil {
 			log.Error("failed to send sync region response", errs.ZapError(errs.ErrGRPCSend, err))
-			return nil, err
+			return 0, false, err
 		}
 		metas = metas[:0]
 		stats = stats[:0]
 		leaders = leaders[:0]
 		buckets = buckets[:0]
 	}
+	return catchUpIndex, false, nil
+}
+
+func (s *RegionSyncer) catchUpFullSyncHistory(
+	name string,
+	catchUpIndex uint64,
+	stream pdpb.PD_SyncRegionsServer,
+) (uint64, bool, error) {
 	for {
 		records := s.history.recordsFrom(catchUpIndex)
 		if len(records) == 0 {
@@ -425,7 +453,7 @@ func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream 
 					zap.String("server", s.server.Name()),
 					zap.Uint64("catch-up-index", catchUpIndex),
 					zap.Uint64("first-index", s.history.getFirstIndex()))
-				return s.syncFullRegions(ctx, name, stream)
+				return catchUpIndex, true, nil
 			}
 			if catchUpIndex == s.history.getNextIndex() {
 				break
@@ -433,10 +461,19 @@ func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream 
 			continue
 		}
 		if err := s.syncHistoryRecords(catchUpIndex, records, stream); err != nil {
-			return nil, err
+			return 0, false, err
 		}
 		catchUpIndex += uint64(len(records))
 	}
+	return catchUpIndex, false, nil
+}
+
+func (s *RegionSyncer) completeFullSyncAndBindStream(
+	name string,
+	stream pdpb.PD_SyncRegionsServer,
+	catchUpIndex uint64,
+	start time.Time,
+) (*regionSyncStream, error) {
 	syncStream := newRegionSyncStream(stream)
 	s.mu.Lock()
 	defer s.mu.Unlock()
