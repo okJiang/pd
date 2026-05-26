@@ -37,6 +37,26 @@ import (
 	"github.com/tikv/pd/pkg/utils/testutil"
 )
 
+func TestHistoryBufferSizeFromMemory(t *testing.T) {
+	testCases := []struct {
+		name        string
+		totalMemory uint64
+		expected    int
+	}{
+		{name: "zero-memory", totalMemory: 0, expected: defaultHistoryBufferSize},
+		{name: "below-minimum", totalMemory: historyBufferMemoryStep / 2, expected: defaultHistoryBufferSize},
+		{name: "base-step", totalMemory: historyBufferMemoryStep, expected: defaultHistoryBufferSize},
+		{name: "round-to-two-units", totalMemory: historyBufferMemoryStep * 3 / 2, expected: 2 * defaultHistoryBufferSize},
+		{name: "max-clamped", totalMemory: historyBufferMemoryStep * 64 / 4, expected: maxHistoryBufferBaseSize},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			require.Equal(t, testCase.expected, historyBufferSizeFromMemory(testCase.totalMemory))
+		})
+	}
+}
+
 func TestSyncExitsWhenRegionSyncerStops(t *testing.T) {
 	re := require.New(t)
 	tempDir := t.TempDir()
@@ -372,10 +392,10 @@ func TestSyncFallsBackToFullSyncWhenHistoryMissing(t *testing.T) {
 	waitTestRegionSyncerUnavailable(re, done)
 }
 
-func TestFullSyncRestartsWhenHistoryBufferOverflowsDuringCatchUp(t *testing.T) {
+func TestFullSyncGrowsHistoryBufferDuringCatchUp(t *testing.T) {
 	re := require.New(t)
 	syncer, bc := newTestRegionSyncer(t, newTestSyncRegion(1, 11))
-	syncer.history = newHistoryBuffer(1, syncer.history.kv)
+	syncer.history = newHistoryBufferWithConfig(1, 4, 1, syncer.history.kv)
 	syncer.history.resetWithIndex(100)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -399,22 +419,64 @@ func TestFullSyncRestartsWhenHistoryBufferOverflowsDuringCatchUp(t *testing.T) {
 	re.Len(resp.GetRegions(), 1)
 	re.Equal(uint64(1), resp.GetRegions()[0].GetId())
 
-	resp = mustRecvSyncRegionResponse(t, stream, "expected restarted full sync response")
-	re.Equal(uint64(0), resp.GetStartIndex())
-	re.Len(resp.GetRegions(), 3)
+	resp = mustRecvSyncRegionResponse(t, stream, "expected full sync catch-up response")
+	re.Equal(uint64(100), resp.GetStartIndex())
+	re.Len(resp.GetRegions(), 2)
 	regionIDs := make([]uint64, 0, len(resp.GetRegions()))
 	for _, region := range resp.GetRegions() {
 		regionIDs = append(regionIDs, region.GetId())
 	}
-	re.ElementsMatch([]uint64{1, 2, 3}, regionIDs)
+	re.ElementsMatch([]uint64{2, 3}, regionIDs)
 
 	resp = mustRecvSyncRegionResponse(t, stream, "expected full sync completion response")
 	re.Equal(uint64(102), resp.GetStartIndex())
 	re.Empty(resp.GetRegions())
+	re.Equal(4, syncer.history.capacity())
 	waitTestRegionSyncerBound(re, syncer)
 
 	cancel()
 	waitTestRegionSyncerUnavailable(re, done)
+}
+
+func TestFullSyncFailsWhenRetainedHistoryExceedsMaxCapacity(t *testing.T) {
+	re := require.New(t)
+	syncer, bc := newTestRegionSyncer(t, newTestSyncRegion(1, 11))
+	syncer.history = newHistoryBufferWithConfig(1, 1, 1, syncer.history.kv)
+	syncer.history.resetWithIndex(100)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := newMockSyncRegionsServer()
+	blockCh := stream.blockSend()
+	done := startTestRegionSync(ctx, syncer, stream)
+
+	sendTestSyncRegionRequest(stream, 1)
+	testutil.Eventually(re, stream.isSendBlocked)
+	for _, region := range []*core.RegionInfo{
+		newTestSyncRegion(2, 12),
+		newTestSyncRegion(3, 13),
+	} {
+		bc.PutRegion(region)
+		syncer.history.record(region)
+	}
+	close(blockCh)
+
+	resp := mustRecvSyncRegionResponse(t, stream, "expected original full sync response")
+	re.Equal(uint64(0), resp.GetStartIndex())
+	re.Len(resp.GetRegions(), 1)
+	re.Equal(uint64(1), resp.GetRegions()[0].GetId())
+
+	var syncErr error
+	testutil.Eventually(re, func() bool {
+		if syncErr == nil {
+			select {
+			case syncErr = <-done:
+			default:
+				return false
+			}
+		}
+		return errors.Is(syncErr, errHistoryBufferRetainOverflow)
+	})
+	re.Empty(syncer.GetAllDownstreamNames())
 }
 
 func TestClientWaitsForFullSyncCompletionBeforeRunning(t *testing.T) {

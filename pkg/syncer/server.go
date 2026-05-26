@@ -34,6 +34,7 @@ import (
 
 	"github.com/tikv/pd/pkg/core"
 	"github.com/tikv/pd/pkg/errs"
+	"github.com/tikv/pd/pkg/memory"
 	"github.com/tikv/pd/pkg/ratelimit"
 	"github.com/tikv/pd/pkg/storage"
 	"github.com/tikv/pd/pkg/storage/kv"
@@ -49,6 +50,8 @@ const (
 	maxSyncRegionBatchSize   = 1000
 	syncerKeepAliveInterval  = 10 * time.Second
 	defaultHistoryBufferSize = 10000
+	historyBufferMemoryStep  = 4 * 1024 * 1024 * 1024
+	maxHistoryBufferBaseSize = 80000
 )
 
 // ClientStream is the client side of the region syncer.
@@ -118,15 +121,31 @@ func NewRegionSyncer(s Server) *RegionSyncer {
 	if regionStorage == nil {
 		return nil
 	}
+	historyBufferSize := historyBufferSizeFromMemory(memory.GetMemTotalIgnoreErr())
 	syncer := &RegionSyncer{
 		server:      s,
-		history:     newHistoryBuffer(defaultHistoryBufferSize, regionStorage.(kv.Base)),
+		history:     newHistoryBuffer(historyBufferSize, regionStorage.(kv.Base)),
 		limit:       ratelimit.NewRateLimiter(defaultBucketRate, defaultBucketCapacity),
 		sendTimeout: syncerKeepAliveInterval,
 		tlsConfig:   s.GetTLSConfig(),
 	}
 	syncer.mu.streams = make(map[string]*regionSyncStream)
 	return syncer
+}
+
+func historyBufferSizeFromMemory(totalMemory uint64) int {
+	if totalMemory == 0 {
+		return defaultHistoryBufferSize
+	}
+	size := int(uint64(defaultHistoryBufferSize) * totalMemory / historyBufferMemoryStep)
+	if size < defaultHistoryBufferSize {
+		return defaultHistoryBufferSize
+	}
+	size = normalizeHistoryBufferCapacity(size, historyBufferCapacityUnit)
+	if size > maxHistoryBufferBaseSize {
+		return maxHistoryBufferBaseSize
+	}
+	return size
 }
 
 // RunServer runs the server of the region syncer.
@@ -192,6 +211,7 @@ func (s *RegionSyncer) RunServer(ctx context.Context, regionNotifier <-chan *cor
 			}
 			s.broadcast(ctx, regions)
 		case <-ticker.C:
+			s.history.maybeShrink()
 			alive := &pdpb.SyncRegionResponse{
 				Header:     &pdpb.ResponseHeader{ClusterId: keypath.ClusterID()},
 				StartIndex: s.history.getNextIndex(),
@@ -292,6 +312,10 @@ func (s *RegionSyncer) syncHistoryRegion(ctx context.Context, request *pdpb.Sync
 	if startIndex == 0 {
 		return s.syncFullRegions(ctx, name, stream)
 	}
+	nextIndex := s.history.getNextIndex()
+	if startIndex < nextIndex {
+		s.history.observeRequiredWindow(nextIndex - startIndex)
+	}
 	records := s.history.recordsFrom(startIndex)
 	if len(records) == 0 {
 		if s.history.getNextIndex() == startIndex {
@@ -352,26 +376,33 @@ func (*RegionSyncer) syncHistoryRecords(startIndex uint64, records []*core.Regio
 func (s *RegionSyncer) syncFullRegions(ctx context.Context, name string, stream pdpb.PD_SyncRegionsServer) (*regionSyncStream, error) {
 	for {
 		start := time.Now()
-		catchUpIndex, canceled, err := s.sendFullRegionSnapshot(ctx, stream)
+		catchUpIndex := s.history.getNextIndex()
+		retainer := s.history.retainFrom(catchUpIndex)
+		canceled, err := s.sendFullRegionSnapshot(ctx, stream)
 		if err != nil {
+			retainer.release()
 			return nil, err
 		}
 		if canceled {
+			retainer.release()
 			return nil, nil
 		}
-		catchUpIndex, restart, err := s.catchUpFullSyncHistory(name, catchUpIndex, stream)
+		catchUpIndex, restart, err := s.catchUpFullSyncHistory(name, catchUpIndex, stream, retainer)
 		if err != nil {
+			retainer.release()
 			return nil, err
 		}
 		if restart {
+			retainer.release()
 			continue
 		}
-		return s.completeFullSyncAndBindStream(name, stream, catchUpIndex, start)
+		syncStream, err := s.completeFullSyncAndBindStream(name, stream, catchUpIndex, start, retainer)
+		retainer.release()
+		return syncStream, err
 	}
 }
 
-func (s *RegionSyncer) sendFullRegionSnapshot(ctx context.Context, stream pdpb.PD_SyncRegionsServer) (uint64, bool, error) {
-	catchUpIndex := s.history.getNextIndex()
+func (s *RegionSyncer) sendFullRegionSnapshot(ctx context.Context, stream pdpb.PD_SyncRegionsServer) (bool, error) {
 	regions := s.server.GetRegions()
 	if len(regions) == 0 {
 		resp := &pdpb.SyncRegionResponse{
@@ -380,7 +411,7 @@ func (s *RegionSyncer) sendFullRegionSnapshot(ctx context.Context, stream pdpb.P
 		}
 		if err := stream.Send(resp); err != nil {
 			log.Warn("failed to send sync region response", errs.ZapError(errs.ErrGRPCSend, err))
-			return 0, false, err
+			return false, err
 		}
 	}
 	lastIndex := 0
@@ -395,7 +426,7 @@ func (s *RegionSyncer) sendFullRegionSnapshot(ctx context.Context, stream pdpb.P
 			failpoint.Inject("noFastExitSync", func() {
 				failpoint.Goto("doSync")
 			})
-			return 0, true, nil
+			return true, nil
 		default:
 		}
 		failpoint.Label("doSync")
@@ -424,27 +455,31 @@ func (s *RegionSyncer) sendFullRegionSnapshot(ctx context.Context, stream pdpb.P
 		}
 		if err := s.limit.WaitN(ctx, resp.Size()); err != nil {
 			log.Error("failed to wait rate limit", errs.ZapError(err))
-			return 0, false, err
+			return false, err
 		}
 		lastIndex += len(metas)
 		if err := stream.Send(resp); err != nil {
 			log.Error("failed to send sync region response", errs.ZapError(errs.ErrGRPCSend, err))
-			return 0, false, err
+			return false, err
 		}
 		metas = metas[:0]
 		stats = stats[:0]
 		leaders = leaders[:0]
 		buckets = buckets[:0]
 	}
-	return catchUpIndex, false, nil
+	return false, nil
 }
 
 func (s *RegionSyncer) catchUpFullSyncHistory(
 	name string,
 	catchUpIndex uint64,
 	stream pdpb.PD_SyncRegionsServer,
+	retainer *historyRetainer,
 ) (uint64, bool, error) {
 	for {
+		if retainer.overflowed() {
+			return 0, false, errHistoryBufferRetainOverflow
+		}
 		records := s.history.recordsFrom(catchUpIndex)
 		if len(records) == 0 {
 			if catchUpIndex < s.history.getFirstIndex() {
@@ -473,11 +508,15 @@ func (s *RegionSyncer) completeFullSyncAndBindStream(
 	stream pdpb.PD_SyncRegionsServer,
 	catchUpIndex uint64,
 	start time.Time,
+	retainer *historyRetainer,
 ) (*regionSyncStream, error) {
 	syncStream := newRegionSyncStream(stream)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for {
+		if retainer.overflowed() {
+			return nil, errHistoryBufferRetainOverflow
+		}
 		records := s.history.recordsFrom(catchUpIndex)
 		if len(records) == 0 {
 			if catchUpIndex < s.history.getFirstIndex() {
